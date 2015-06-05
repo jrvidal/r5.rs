@@ -19,8 +19,7 @@ pub struct Peek {
 
 impl<T: Iterator<Item=char>> Debug for Peekable<T> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "buffer: {:?}\nindex: {}, end: {}", self.buffer, self.index, self.end);
-        Ok(())
+        return write!(f, "buffer: {:?}\nindex: {}, end: {}", self.buffer, self.index, self.end);
     }
 }
 
@@ -151,7 +150,7 @@ fn peek() {
     let s = "0123456789";
     let mut p = Peekable::from_iter(s.chars());
 
-    for i in 0..5 {
+    for _ in 0..5 {
         p.next();
     }
 
@@ -170,7 +169,7 @@ fn peek2() {
     let s = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     let mut p = Peekable::from_iter(s.chars());
 
-    for i in 0..30 {
+    for _ in 0..30 {
         p.next();
     }
 

@@ -1,5 +1,7 @@
 
 use std::ascii::AsciiExt;
+use std::iter;
+
 mod peekable;
 use self::peekable::Peekable;
 mod number;
@@ -68,24 +70,19 @@ macro_rules! delegate_parse_number {
 }
 
 macro_rules! is_whitespace {
-    ($x:expr) => ({
-
-        println!("is whitespace? <{:?}>", $x);
-        $x == ' ' || $x == '\n'
-    }
-    )
+    ($x:expr) => ($x == ' ' || $x == '\n')
 }
 
 macro_rules! is_delimiter {
     ($x:expr) => (
         $x.is_none() || {
             let y = $x.unwrap();
-            println!("is delimiter <{:?}>", y);
             y == '(' || (y == ')' || ( y == '"' || ( y == ';' || is_whitespace!(y))))
         }
     )
 }
 
+#[allow(dead_code)]
 pub fn next_token<T>(mut stream: Peekable<T>) -> Result<Option<Token>, String> 
     where T: Iterator<Item=char>
 {
@@ -222,44 +219,29 @@ pub fn next_token<T>(mut stream: Peekable<T>) -> Result<Option<Token>, String>
                     CHAR_NAME_NEWLINE
                 };
 
-                let mut big_peek = stream.peek().map(lc);
+                let big_peek = stream.peek().map(lc);
+                let l = char_name.len() - 1;
 
+                for (i, x) in big_peek.map(|c| Some(c))
+                        .chain(iter::repeat(None))
+                        .enumerate() {
 
-                {
-                    let mut i = 0;
-
-                    loop {
-                        match big_peek.next() {
-                            Some(x) => {
-                                if i < char_name.len() && x != char_name[i + 1] {
-                                    // Error
-                                } else if i == char_name.len() {
-                                    if is_delimiter!(x) {
-                                        // Good
-                                    } else {
-                                        // Bad
-                                    }
-                                }
-                            },
-                            None
-                        }
-
-                        i += 1;
+                    match (i, x) {
+                        (_, Some(c)) if i < l && c == char_name[i + 1] => {},
+                        _ if i == l && is_delimiter!(x)  => {
+                            stream.advance(l);
+                            ret_val!(Token::Character(if char_name == CHAR_NAME_SPACE {
+                                ' '
+                            } else {
+                                '\n'
+                            }));
+                        },
+                        _ => return Err("bad character name".to_string())
                     }
+
                 }
 
 
-                println!("now what?");
-
-                // if is_delimiter!(big_peek.next()) {
-                //     ret_val!(Token::Character(if char_name == CHAR_NAME_NEWLINE {
-                //         '\n'
-                //     } else {
-                //         ' '
-                //     }));
-                // } else {
-                //     return Err("bad_character_name!".to_string())
-                // }
             },
             ParsingState::String => {
                 match c {
@@ -427,22 +409,20 @@ mod tests {
 
     #[test]
     fn chars_test() {
-        // assert_next("#\\a", Token::Character('a'));
-        // assert_next("#\\s", Token::Character('s'));
-        // assert_next("#\\S", Token::Character('S'));
-        // assert_next("#\\s foo", Token::Character('s'));
-        // assert_next("#\\S foo", Token::Character('S'));
-        // assert_next("#\\space", Token::Character(' '));
+        assert_next("#\\a", Token::Character('a'));
+        assert_next("#\\s", Token::Character('s'));
+        assert_next("#\\S", Token::Character('S'));
+        assert_next("#\\s foo", Token::Character('s'));
+        assert_next("#\\S foo", Token::Character('S'));
+        assert_next("#\\space", Token::Character(' '));
         assert_next("#\\space 2", Token::Character(' '));
-        // assert_next("#\\sPaCe 2", Token::Character(' '));
-        // assert_next("#\\n", Token::Character('n'));
-        // assert_next("#\\N", Token::Character('N'));
-        // assert_next("#\\n foo", Token::Character('n'));
-        // assert_next("#\\N foo", Token::Character('N'));
-        // assert_next("#\\newline", Token::Character('\n'));
-        // assert_next("#\\newline 2", Token::Character('\n'));
-
-
+        assert_next("#\\sPaCe 2", Token::Character(' '));
+        assert_next("#\\n", Token::Character('n'));
+        assert_next("#\\N", Token::Character('N'));
+        assert_next("#\\n foo", Token::Character('n'));
+        assert_next("#\\N foo", Token::Character('N'));
+        assert_next("#\\newline", Token::Character('\n'));
+        assert_next("#\\newline 2", Token::Character('\n'));
 
         // assert_next("#\\spac", Token::Character('s'));
         // assert_next("#\\spac1", Token::Character('s'));
