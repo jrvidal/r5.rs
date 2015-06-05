@@ -1,5 +1,9 @@
 use std::fmt::{Debug, Formatter, Error};
 
+/**
+    A simple buffered reader to peek a chars stream
+*/
+
 const BUFFER_SIZE : u8 = 12;
 
 pub struct Peekable<T: Iterator<Item=char>> {

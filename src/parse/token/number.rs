@@ -1,6 +1,6 @@
 
 use std::ascii::AsciiExt;
-use super::peekable::Peekable;
+use super::Peekable;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct NumberToken {
@@ -389,7 +389,7 @@ fn parse_real<T: Iterator<Item=char>>(mut stream: &mut Peekable<T>, r: &Option<R
 mod test {
     use super::*;
     use super::{parse_prefix, parse_real};
-    use super::super::peekable::Peekable;
+    use super::super::Peekable;
     use std::str;
 
     fn stream(s: &str) -> Peekable<str::Chars> {
