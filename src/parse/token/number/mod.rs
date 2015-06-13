@@ -296,7 +296,11 @@ fn parse_complex<T: Peekable>(stream: &mut T, rad: Option<Radix>) -> Result<Comp
 
     // ±i
     if first_sign.is_some() && peek[1].map(|c| c.to_ascii_lowercase()) == Some('i') {
-        return Ok(ComplexLiteral::Cartesian(None, first_sign.unwrap(), None));
+        if is_delimiter!(peek[2]) {
+            return Ok(ComplexLiteral::Cartesian(None, first_sign.unwrap(), None));
+        } else {
+            return Err("bad delimiter".to_string());
+        }
     }
 
     let first_real = match parse_real(stream, rad) {
@@ -308,7 +312,7 @@ fn parse_complex<T: Peekable>(stream: &mut T, rad: Option<Radix>) -> Result<Comp
     let mut cartesian = true;
     let mut second_sign = None;
 
-    match peek[0] {
+    match peek[0].map(|c| c.to_ascii_lowercase()) {
         Some('+') | Some('-') => {
             second_sign = peek[0].map(NumSign::from);
             stream.next();
@@ -327,7 +331,7 @@ fn parse_complex<T: Peekable>(stream: &mut T, rad: Option<Radix>) -> Result<Comp
         },
 
         // ±ai
-        Some('i') if first_sign.is_some() => {
+        Some('i') if first_sign.is_some() && is_delimiter!(peek[1]) => {
             stream.next();
             return Ok(ComplexLiteral::Cartesian(None, first_sign.unwrap(), Some(first_real)));
         },
@@ -336,8 +340,11 @@ fn parse_complex<T: Peekable>(stream: &mut T, rad: Option<Radix>) -> Result<Comp
         _ => return Err("bad delimiter".to_string()),
     }
 
+
+    let peek = stream.small_peek();
+
     // a±i
-    if cartesian && stream.small_peek()[0] == Some('i') {
+    if cartesian && peek[0].map(|c| c.to_ascii_lowercase()) == Some('i') && is_delimiter!(peek[1]) {
         return Ok(ComplexLiteral::Cartesian(Some((first_sign, first_real)), second_sign.unwrap(), None));
     }
 
@@ -347,7 +354,7 @@ fn parse_complex<T: Peekable>(stream: &mut T, rad: Option<Radix>) -> Result<Comp
     };
 
     if cartesian {
-        if stream.small_peek()[0] == Some('i') {
+        if stream.small_peek()[0].map(|c| c.to_ascii_lowercase()) == Some('i') {
             stream.next();
         } else {
             return Err("bad cartesian".to_string());
