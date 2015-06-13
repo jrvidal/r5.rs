@@ -15,8 +15,8 @@ fn next_token(s: &str) -> NumberToken {
 fn prefix() {
     assert!(parse_prefix(&mut stream("")).ok().unwrap() == (None, None));
     assert!(parse_prefix(&mut stream("#e")).ok().unwrap() == (Some(Exactness::Exact), None));
-    assert!(parse_prefix(&mut stream("#o")).ok().unwrap() == (None, Some(Radix::Octal)));
-    assert!(parse_prefix(&mut stream("#d#i")).ok().unwrap() == (Some(Exactness::Inexact), Some(Radix::Decimal)));
+    assert!(parse_prefix(&mut stream("#O")).ok().unwrap() == (None, Some(Radix::Octal)));
+    assert!(parse_prefix(&mut stream("#d#I")).ok().unwrap() == (Some(Exactness::Inexact), Some(Radix::Decimal)));
     assert!(parse_prefix(&mut stream("#d#")).is_err());
     assert!(parse_prefix(&mut stream("#\\")).is_err());
 }
@@ -226,7 +226,7 @@ fn parse_real_with_decimal() {
     let t = parse_real(&mut stream(n), None).ok().unwrap();
     assert_dec!(t, 1, "12", 3);
 
-    let n = "12.e12";
+    let n = "12.E12";
     let t = parse_real(&mut stream(n), None).ok().unwrap();
     assert_dec!(t, 0, "12", 2, DecSuffix {
         sign: None,
@@ -280,7 +280,7 @@ fn parse_complex_with_cartesian() {
     assert!(s == NumSign::Plus);
     assert!(r == None);
 
-    let n = "1#-2i";
+    let n = "1#-2I";
     let t = parse_complex(&mut stream(n), None).ok().unwrap();
     let (s, r) = t.real_part().unwrap();
     assert!(s == None);
@@ -298,12 +298,22 @@ fn parse_complex_with_cartesian() {
     assert!(s == NumSign::Plus);
     assert_frac!(r.unwrap(), [0, "2"], [0, "1"]);
 
-    let n = "+3afi";
+    let n = "+3aFi";
     let t = parse_complex(&mut stream(n), Some(Radix::Hexadecimal)).ok().unwrap();
     assert!(None == t.real_part());
     let (s, r) = t.imaginary_part();
     assert!(s == NumSign::Plus);
     assert_int!(r.unwrap(), 0, "3af");
+
+    // With delimiter
+    let n = "-1.3+2/1I)";
+    let t = parse_complex(&mut stream(n), None).ok().unwrap();
+    let (s, r) = t.real_part().unwrap();
+    assert!(s == Some(NumSign::Minus));
+    assert_dec!(r, 0, "13", 1);
+    let (s, r) = t.imaginary_part();
+    assert!(s == NumSign::Plus);
+    assert_frac!(r.unwrap(), [0, "2"], [0, "1"]);
 }
 
 #[test]
@@ -326,7 +336,7 @@ fn parse_complex_with_polar() {
     assert!(s == Some(NumSign::Minus));
     assert_int!(r, 0, "23");
 
-    let n = "3/a#@3#";
+    let n = "3/A#@3#";
     let t = parse_complex(&mut stream(n), Some(Radix::Hexadecimal)).ok().unwrap();
     let (s, r) = t.modulus();
     assert!(s == None);
@@ -334,12 +344,31 @@ fn parse_complex_with_polar() {
     let (s, r) = t.phase();
     assert!(s == None);
     assert_int!(r, 1, "3");
+
+    // With delimiter
+    let n = "+12#.#@-23\"";
+    let t = parse_complex(&mut stream(n), None).ok().unwrap();
+    let (s, r) = t.modulus();
+    assert!(s == Some(NumSign::Plus));
+    assert_dec!(r, 2, "12", 3);
+    let (s, r) = t.phase();
+    assert!(s == Some(NumSign::Minus));
+    assert_int!(r, 0, "23");
 }
 
 #[test]
 fn parse_complex_error() {
     // Bad delimiters
     let n = "13&";
+    let t = parse_complex(&mut stream(n), None);
+    assert!(t.is_err());
+
+    let n = "13+i@";
+    let t = parse_complex(&mut stream(n), None);
+    assert!(t.is_err());
+
+    // Bad cartesian
+    let n = "13+2/1";
     let t = parse_complex(&mut stream(n), None);
     assert!(t.is_err());
 
