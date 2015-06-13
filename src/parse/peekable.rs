@@ -6,25 +6,11 @@ use std::fmt::{Debug, Formatter, Error};
 
 const BUFFER_SIZE : u8 = 12;
 
-pub struct Peekable<T: Iterator<Item=char>> {
-    buffer: [char; BUFFER_SIZE as usize],
-    index: u8,
-    end: u8,
-    stream: T,
-    exhausted: bool,
-}
-
 #[derive(Debug)]
 pub struct Peek {
     buffer: [char; BUFFER_SIZE as usize],
     end: u8,
     index: u8
-}
-
-impl<T: Iterator<Item=char>> Debug for Peekable<T> {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        return write!(f, "buffer: {:?}\nindex: {}, end: {}", self.buffer, self.index, self.end);
-    }
 }
 
 impl Iterator for Peek {
@@ -40,7 +26,24 @@ impl Iterator for Peek {
     }
 }
 
-impl<T> Peekable<T> where T:Iterator<Item=char> {
+pub trait Peekable : Iterator<Item=char> {
+    fn peek(&mut self) -> Peek;
+    fn small_peek(&mut self) -> [Option<char>; 3];
+    fn advance(&mut self, n: usize);
+}
+
+/**
+    An implementation of Peekable
+*/
+pub struct PeekableChars<T: Iterator<Item=char>> {
+    buffer: [char; BUFFER_SIZE as usize],
+    index: u8,
+    end: u8,
+    stream: T,
+    exhausted: bool,
+}
+
+impl<T> PeekableChars<T> where T: Iterator<Item=char> {
     fn _load(&mut self) {
         for i in self.index as usize..self.end as usize {
             self.buffer[i - self.index as usize] = self.buffer[i];
@@ -60,7 +63,27 @@ impl<T> Peekable<T> where T:Iterator<Item=char> {
         self.exhausted = self.end == 0;
     }
 
-    pub fn peek(&mut self) -> Peek {
+    pub fn from_iter(iterator: T) -> Self {
+        let mut p : PeekableChars<T>= PeekableChars {
+            index: 0,
+            end: 0,
+            stream: iterator,
+            buffer: ['\x00'; BUFFER_SIZE as usize],
+            exhausted: false
+        };
+        p._load();
+        p
+    }
+}
+
+impl<T: Iterator<Item=char>> Debug for PeekableChars<T> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        return write!(f, "buffer: {:?}\nindex: {}, end: {}", self.buffer, self.index, self.end);
+    }
+}
+
+impl<T> Peekable for PeekableChars<T> where T: Iterator<Item=char> {
+    fn peek(&mut self) -> Peek {
         self._load();
 
         Peek {
@@ -70,7 +93,7 @@ impl<T> Peekable<T> where T:Iterator<Item=char> {
         }
     }
 
-    pub fn small_peek(&mut self) -> [Option<char>; 3] {
+    fn small_peek(&mut self) -> [Option<char>; 3] {
         if self.end - self.index < 3 {
             self._load();
         }
@@ -94,7 +117,7 @@ impl<T> Peekable<T> where T:Iterator<Item=char> {
         result
     }
 
-    pub fn advance(&mut self, n: usize) {
+    fn advance(&mut self, n: usize) {
         if (self.end - self.index) as usize >= n {
             self.index += n as u8;
         } else {
@@ -104,20 +127,9 @@ impl<T> Peekable<T> where T:Iterator<Item=char> {
         }
     }
 
-    pub fn from_iter(iterator: T) -> Self {
-        let mut p = Peekable {
-            index: 0,
-            end: 0,
-            stream: iterator,
-            buffer: ['\x00'; BUFFER_SIZE as usize],
-            exhausted: false
-        };
-        p._load();
-        p
-    }
 }
 
-impl<T> Iterator for Peekable<T> where T:Iterator<Item=char> {
+impl<T> Iterator for PeekableChars<T> where T:Iterator<Item=char> {
     type Item = char;
 
     fn next(&mut self) -> Option<char> {
@@ -135,53 +147,57 @@ impl<T> Iterator for Peekable<T> where T:Iterator<Item=char> {
 }
 
 
-#[test]
-fn iterate() {
-    let s = "abcd";
-    let p = Peekable::from_iter(s.chars());
-    assert!(p.collect::<String>() == s);
-}
+#[cfg(test)]
+mod test {
+    use super::*;
+    use super::BUFFER_SIZE;
 
-#[test]
-fn iterate2() {
-    let s = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-    let p = Peekable::from_iter(s.chars());
-    assert!(p.collect::<String>() == s);
-}
+    const S : &'static str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-#[test]
-fn peek() {
-    let s = "0123456789";
-    let mut p = Peekable::from_iter(s.chars());
-
-    for _ in 0..5 {
-        p.next();
+    #[test]
+    fn iterate_short() {
+        let p = PeekableChars::from_iter(S.chars().take(4));
+        assert!(p.collect::<String>() == S[..4]);
     }
 
-    {
-        let few = p.peek();
-
-        assert!(few.collect::<String>() == "56789");
+    #[test]
+    fn iterate_long() {
+        let p = PeekableChars::from_iter(S.chars());
+        assert!(p.collect::<String>() == S);
     }
 
+    #[test]
+    fn peek_short() {
+        let mut p = PeekableChars::from_iter(S.chars().take(10));
 
-    assert!(p.collect::<String>() == "56789");
-}
+        for _ in 0..5 {
+            p.next();
+        }
 
-#[test]
-fn peek2() {
-    let s = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-    let mut p = Peekable::from_iter(s.chars());
+        {
+            let few = p.peek();
 
-    for _ in 0..30 {
-        p.next();
+            assert!(few.collect::<String>() == S[5..10]);
+        }
+
+
+        assert!(p.collect::<String>() == S[5..10]);
     }
 
-    {
-        let few = p.peek();
+    #[test]
+    fn peek_long() {
+        let mut p = PeekableChars::from_iter(S.chars());
 
-        assert!(few.collect::<String>() == s[30..(30 + BUFFER_SIZE as usize)]);
+        for _ in 0..30 {
+            p.next();
+        }
+
+        {
+            let few = p.peek();
+
+            assert!(few.collect::<String>() == S[30..(30 + BUFFER_SIZE as usize)]);
+        }
+
+        assert!(p.collect::<String>() == S[30..]);
     }
-
-    assert!(p.collect::<String>() == &s[30..]);
 }

@@ -1,10 +1,52 @@
 
+
 use std::ascii::AsciiExt;
 use std::iter;
-
 pub use super::peekable::Peekable;
+
+macro_rules! ret_val {
+    ($x:expr) => (return Ok(Some($x)));
+    ($x:expr, $s:ident, $n:expr) => ({
+        $s.advance($n);
+        return Ok(Some($x))
+    });
+}
+
+macro_rules! delegate_parse_number {
+    ($s:expr) => (
+        return parse_number($s).map(|x| {
+            Some(Token::Number(x))
+        })
+    )
+}
+
+macro_rules! is_whitespace {
+    ($x:expr) => ($x == ' ' || $x == '\n')
+}
+
+macro_rules! is_delimiter {
+    ($x:expr) => (
+        $x.is_none() || {
+            let y = $x.unwrap();
+            y == '(' || (y == ')' || ( y == '"' || ( y == ';' || is_whitespace!(y))))
+        }
+    )
+}
+
+macro_rules! is_digit {
+    ($c:expr) => (
+        match $c {
+            '0'...'9' => true,
+            _ => false
+        }
+    )
+}
+
 mod number;
 use self::number::{parse_number, NumberToken};
+
+#[cfg(test)]
+mod test;
 
 /**
     Tokenizer
@@ -52,37 +94,8 @@ enum ParsingState {
 const CHAR_NAME_SPACE : &'static [char] = &['s', 'p', 'a', 'c', 'e'];
 const CHAR_NAME_NEWLINE : &'static [char] = &['n', 'e', 'w', 'l', 'i', 'n', 'e'];
 
-macro_rules! ret_val {
-    ($x:expr) => (return Ok(Some($x)));
-    ($x:expr, $s:ident, $n:expr) => ({
-        $s.advance($n);
-        return Ok(Some($x))
-    });
-}
-
-macro_rules! delegate_parse_number {
-    ($s:expr) => (
-        return parse_number($s).map(|x| {
-            Some(Token::Number(x))
-        })
-    )
-}
-
-macro_rules! is_whitespace {
-    ($x:expr) => ($x == ' ' || $x == '\n')
-}
-
-macro_rules! is_delimiter {
-    ($x:expr) => (
-        $x.is_none() || {
-            let y = $x.unwrap();
-            y == '(' || (y == ')' || ( y == '"' || ( y == ';' || is_whitespace!(y))))
-        }
-    )
-}
-
 #[allow(dead_code)]
-pub fn next_token<T>(mut stream: Peekable<T>) -> Result<Option<Token>, String> 
+pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, String> 
     where T: Iterator<Item=char>
 {
     let mut state = ParsingState::Normal;
@@ -239,8 +252,6 @@ pub fn next_token<T>(mut stream: Peekable<T>) -> Result<Option<Token>, String>
                     }
 
                 }
-
-
             },
             ParsingState::String => {
                 match c {
@@ -285,29 +296,13 @@ fn is_initial(c: char) -> bool {
 
 #[inline]
 fn is_subsequent(c: char) -> bool {
-    is_initial(c) || is_digit(c) || is_special_subsequent(c)
-}
-
-#[inline]
-fn is_radix(c: char) -> bool {
-    match c {
-        'b' | 'o' | 'd' | 'x' => true,
-        _ => false
-    }
+    is_initial(c) || is_digit!(c) || is_special_subsequent(c)
 }
 
 #[inline]
 fn is_letter(c: char) -> bool {
     match c {
         'a'...'z' => true,
-        _ => false
-    }
-}
-
-#[inline]
-fn is_digit(c: char) -> bool {
-    match c {
-        '0'...'9' => true,
         _ => false
     }
 }
@@ -327,151 +322,5 @@ fn is_special_subsequent(c: char) -> bool {
     match c {
         '+' | '-' | '.' | '@' => true,
         _ => false
-    }
-}
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn assert_next(code: &str, token: Token) {
-        let result = next_token(Peekable::from_iter(code.chars())).ok().unwrap().unwrap();
-        println!("{:?}", result);
-        assert!(result == token);
-    }
-
-    fn assert_next_identifier(code: &str, identifier: &str) {
-        match next_token(Peekable::from_iter(code.chars())).ok().unwrap().unwrap() {
-            Token::Identifier(id) => {
-                println!("{:?} {:?}", id, identifier);
-                assert!(id == identifier);
-            },
-            _ => panic!("Not an identifier")
-        }
-    }
-
-    #[test]
-    fn whitespace_test() {
-        assert_next(" (", Token::Open);
-        assert_next("\n (", Token::Open);
-    }
-
-    #[test]
-    fn clopen_test() {
-        assert_next("(asdd", Token::Open);
-        assert_next(")#12", Token::Close);
-    }
-
-    #[test]
-    fn booleans_test() {
-        assert_next("#t 13", Token::Boolean(true));
-        assert_next("#T(1)", Token::Boolean(true));
-        assert_next("#F 4t8i90", Token::Boolean(false));
-        assert_next("#f)@s89g", Token::Boolean(false));
-    }
-
-    #[test]
-    fn open_vector_test() {
-        assert_next("#(@klsdj", Token::OpenVector);
-    }
-
-    #[test]
-    fn strings_test() {
-        assert_next("\"asdf\"", Token::String("asdf".to_string()));
-        assert_next("\"foo\\\"#bar\"", Token::String("foo\"#bar".to_string()));
-        assert_next("\"foo bar\"", Token::String("foo bar".to_string()));
-        assert_next("\"foo\nbar\"", Token::String("foo\nbar".to_string()));
-    }
-
-    #[test]
-    fn backquote_test() {
-        assert_next("`#24@", Token::BackQuote);
-    }
-
-    #[test]
-    fn dot_test() {
-        assert_next(".(#24@", Token::Dot);
-    }
-
-    #[test]
-    fn single_quote_test() {
-        assert_next("'.(#24@", Token::SingleQuote);
-    }
-
-    #[test]
-    fn commas_test() {
-        assert_next(",(#skdf", Token::Comma);
-        assert_next(",@)#skdf", Token::CommaAt);
-    }
-
-    #[test]
-    fn chars_test() {
-        assert_next("#\\a", Token::Character('a'));
-        assert_next("#\\s", Token::Character('s'));
-        assert_next("#\\S", Token::Character('S'));
-        assert_next("#\\s foo", Token::Character('s'));
-        assert_next("#\\S foo", Token::Character('S'));
-        assert_next("#\\space", Token::Character(' '));
-        assert_next("#\\space 2", Token::Character(' '));
-        assert_next("#\\sPaCe 2", Token::Character(' '));
-        assert_next("#\\n", Token::Character('n'));
-        assert_next("#\\N", Token::Character('N'));
-        assert_next("#\\n foo", Token::Character('n'));
-        assert_next("#\\N foo", Token::Character('N'));
-        assert_next("#\\newline", Token::Character('\n'));
-        assert_next("#\\newline 2", Token::Character('\n'));
-
-        // assert_next("#\\spac", Token::Character('s'));
-        // assert_next("#\\spac1", Token::Character('s'));
-        // assert_next("#\\newlin", Token::Character('n'));
-        // assert_next("#\\newlin1", Token::Character('n'));
-        // assert_next("#\\Newlin1", Token::Character('N'));
-    }
-
-    #[test]
-    fn special_identifiers_test() {
-        assert_next_identifier("+", "+");
-        assert_next_identifier("+ a", "+");
-        assert_next_identifier("-", "-");
-        assert_next_identifier("- a", "-");
-        assert_next_identifier("...", "...");
-        assert_next_identifier("... a", "...");
-    }
-
-    #[test]
-    fn identifiers_test() {
-        assert_next_identifier("a", "a");
-        assert_next_identifier("a;", "a");
-        assert_next_identifier("asdf", "asdf");
-        assert_next_identifier("asdf;", "asdf");
-        assert_next_identifier("a0", "a0");
-
-        for &c in [
-            // Special initials
-            '!', '$', '%', '&', '*',
-            '/', ':', '<', '=', '>',
-            '?', '^', '_', '~',
-            // Special subsequents
-            '+', '-', '.', '@'
-        ].iter() {
-            let mut s = "a".to_string();
-            s.push(c);
-            assert_next_identifier(&s[..], &s[..])
-        }
-
-        for &c in [
-            // Special initials
-            '!', '$', '%', '&', '*',
-            '/', ':', '<', '=', '>',
-            '?', '^', '_', '~',
-            // Special subsequents
-            '+', '-', '.', '@'
-        ].iter() {
-            let mut s = "a".to_string();
-            s.push(c);
-            s.push(';');
-            assert_next_identifier(&s[..], &s[0..2])
-        }
     }
 }

@@ -2,6 +2,9 @@
 use std::ascii::AsciiExt;
 use super::Peekable;
 
+#[cfg(test)]
+mod test;
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct NumberToken {
     exactness: Option<Exactness>,
@@ -11,7 +14,7 @@ pub struct NumberToken {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum ComplexLiteral {
-    Cartesian(Option<NumSign>, Option<RealLiteral>, NumSign, Option<RealLiteral>),
+    Cartesian(Option<(Option<NumSign>, RealLiteral)>, NumSign, Option<RealLiteral>),
     Polar(Option<NumSign>, RealLiteral, Option<NumSign>, RealLiteral),
     Real(Option<NumSign>, RealLiteral)
 }
@@ -53,7 +56,8 @@ pub enum ExpMarker {
     Short,
     Single,
     Double,
-    Long
+    Long,
+    Default,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -80,18 +84,6 @@ impl From<char> for NumSign {
     }
 }
 
-impl From<u8> for Radix {
-    fn from(n: u8) -> Radix {
-        match n {
-            2 => Radix::Binary,
-            8 => Radix::Octal,
-            10 => Radix::Decimal,
-            16 => Radix::Hexadecimal,
-            _ => panic!("Invalid radix!")
-        }
-    }
-}
-
 impl From<char> for Radix {
     fn from(c: char) -> Radix {
         match c.to_ascii_lowercase() {
@@ -110,6 +102,19 @@ impl From<char> for Exactness {
             'e' => Exactness::Exact,
             'i' => Exactness::Inexact,
             _ => panic!("Invalid exactness")
+        }
+    }
+}
+
+impl From<char> for ExpMarker {
+    fn from(c: char) -> ExpMarker {
+        match c.to_ascii_lowercase() {
+            'e' => ExpMarker::Default,
+            's' => ExpMarker::Short,
+            'l' => ExpMarker::Long,
+            'f' => ExpMarker::Single,
+            'd' => ExpMarker::Double,
+            _ => panic!("Invalid exponential marker")
         }
     }
 }
@@ -191,12 +196,59 @@ impl RealLiteral {
     }
 }
 
+impl ComplexLiteral {
+    fn is_cartesian(&self) -> bool {
+        match *self {
+            ComplexLiteral::Cartesian(..) => true,
+            _ => false
+        }
+    }
+    fn is_polar(&self) -> bool {
+        match *self {
+            ComplexLiteral::Polar(..) => true,
+            _ => false
+        }
+    }
+    fn is_real(&self) -> bool {
+        match *self {
+            ComplexLiteral::Real(..) => true,
+            _ => false
+        }
+    }
+    fn real_part(&self) -> Option<(Option<NumSign>, &RealLiteral)> {
+        match *self {
+            ComplexLiteral::Cartesian(None, _, _) => None,
+            ComplexLiteral::Cartesian(Some((s, ref r)), _, _) => Some((s, r)),
+            ComplexLiteral::Real(s, ref r) => Some((s, r)),
+            _ => panic!("Not a cartesian or real literal")
+        }
+    }
+    fn imaginary_part(&self) -> (NumSign, Option<&RealLiteral>) {
+        match *self {
+            ComplexLiteral::Cartesian(_, s, ref r) => (s, r.as_ref()),
+            _ => panic!("Not a cartesian literal")
+        }
+    }
+    fn modulus(&self) -> (Option<NumSign>, &RealLiteral) {
+        match *self {
+            ComplexLiteral::Polar(s, ref r, _, _) => (s, r),
+            _ => panic!("Not a polar literal")
+        }
+    }
+    fn phase(&self) -> (Option<NumSign>, &RealLiteral) {
+        match *self {
+            ComplexLiteral::Polar(_, _, s, ref r) => (s, r),
+            _ => panic!("Not a polar literal")
+        }
+    }
+}
+
 type Prefix = (Option<Exactness>, Option<Radix>);
 
 // stream is guaranteed to be non-empty
-pub fn parse_number<T: Iterator<Item=char>> (mut stream: &mut Peekable<T>) -> Result<NumberToken, String> {
+pub fn parse_number<T: Peekable> (mut stream: &mut T) -> Result<NumberToken, String> {
     parse_prefix(stream).and_then(|(e, r)| {
-        parse_complex(stream, &r).map(|n| (e, r, n))
+        parse_complex(stream, r).map(|n| (e, r, n))
     }).map(|(e, r, n)| {
         NumberToken {
             exactness: e,
@@ -206,7 +258,7 @@ pub fn parse_number<T: Iterator<Item=char>> (mut stream: &mut Peekable<T>) -> Re
     })
 }
 
-fn parse_prefix<T: Iterator<Item=char>>(mut stream: &mut Peekable<T>) -> Result<Prefix, String> {
+fn parse_prefix<T: Peekable>(mut stream: &mut T) -> Result<Prefix, String> {
     let mut exactness = None;
     let mut radix = None;
 
@@ -232,7 +284,7 @@ fn parse_prefix<T: Iterator<Item=char>>(mut stream: &mut Peekable<T>) -> Result<
     }
 }
 
-fn parse_complex<T: Iterator<Item=char>>(stream: &mut Peekable<T>, rad: &Option<Radix>) -> Result<ComplexLiteral, String> {
+fn parse_complex<T: Peekable>(stream: &mut T, rad: Option<Radix>) -> Result<ComplexLiteral, String> {
 
     let peek = stream.small_peek();
     let mut first_sign = None;
@@ -244,7 +296,7 @@ fn parse_complex<T: Iterator<Item=char>>(stream: &mut Peekable<T>, rad: &Option<
 
     // ±i
     if first_sign.is_some() && peek[1].map(|c| c.to_ascii_lowercase()) == Some('i') {
-        return Ok(ComplexLiteral::Cartesian(None, None, first_sign.unwrap(), None));
+        return Ok(ComplexLiteral::Cartesian(None, first_sign.unwrap(), None));
     }
 
     let first_real = match parse_real(stream, rad) {
@@ -271,10 +323,22 @@ fn parse_complex<T: Iterator<Item=char>>(stream: &mut Peekable<T>, rad: &Option<
                 },
                 _ => {}
             }
+            stream.next();
         },
 
-        // TO DO: error if no delimiter!
-        _ => return Ok(ComplexLiteral::Real(first_sign, first_real))
+        // ±ai
+        Some('i') if first_sign.is_some() => {
+            stream.next();
+            return Ok(ComplexLiteral::Cartesian(None, first_sign.unwrap(), Some(first_real)));
+        },
+
+        _ if is_delimiter!(peek[0]) => return Ok(ComplexLiteral::Real(first_sign, first_real)),
+        _ => return Err("bad delimiter".to_string()),
+    }
+
+    // a±i
+    if cartesian && stream.small_peek()[0] == Some('i') {
+        return Ok(ComplexLiteral::Cartesian(Some((first_sign, first_real)), second_sign.unwrap(), None));
     }
 
     let second_real = match parse_real(stream, rad) {
@@ -282,13 +346,21 @@ fn parse_complex<T: Iterator<Item=char>>(stream: &mut Peekable<T>, rad: &Option<
         Err(e) => return Err(e)
     };
 
+    if cartesian {
+        if stream.small_peek()[0] == Some('i') {
+            stream.next();
+        } else {
+            return Err("bad cartesian".to_string());
+        }
+    }
+
     let peek = stream.small_peek();
 
     match peek[0] {
-        // TO DO: error if bad delimiter
+        _ if !is_delimiter!(peek[0]) => return Err("bad delimiter".to_string()),
         _ => if cartesian {
             Ok(ComplexLiteral::Cartesian(
-                first_sign, Some(first_real), second_sign.unwrap(), Some(second_real)
+                Some((first_sign, first_real)), second_sign.unwrap(), Some(second_real)
             ))
         } else {
             Ok(ComplexLiteral::Polar(first_sign, first_real, second_sign, second_real))
@@ -296,13 +368,25 @@ fn parse_complex<T: Iterator<Item=char>>(stream: &mut Peekable<T>, rad: &Option<
     }
 }
 
-// It does not err if last token is not a delimiter
-fn parse_real<T: Iterator<Item=char>>(mut stream: &mut Peekable<T>, r: &Option<Radix>) -> Result<RealLiteral, String> {
-
+// It does not err if last char is not a delimiter
+fn parse_real<T: Peekable>(mut stream: &mut T, r: Option<Radix>) -> Result<RealLiteral, String> {
+    #[derive(Debug, PartialEq)]
     enum Number {
         Int,
         Decimal,
         Fraction
+    }
+
+    macro_rules! is_valid_digit {
+        ($digit:expr, $radix:expr, $decimal:expr) => ({
+            match $digit {
+                'a'...'f' if !$decimal && $radix == 16 => true,
+                '8' | '9' if $radix >= 10 => true,
+                '2'...'7' if $radix >= 8 => true,
+                '0' | '1' => true,
+                _ => false
+            }
+        })
     }
 
     let radix = r.unwrap_or(Radix::Decimal) as u8;
@@ -310,7 +394,7 @@ fn parse_real<T: Iterator<Item=char>>(mut stream: &mut Peekable<T>, r: &Option<R
     let mut num_type = Number::Int;
     let mut digits = String::new();
     let mut pounds = 0;
-    let mut accepts_pounds = false;
+    // let mut accepts_pounds = false;
     let mut numerator = None;
     let mut point = 0;
     let mut suffix = None;
@@ -319,7 +403,7 @@ fn parse_real<T: Iterator<Item=char>>(mut stream: &mut Peekable<T>, r: &Option<R
         let peek = stream.small_peek()[0].map(|c| c.to_ascii_lowercase());
 
         match peek {
-            Some('#') if accepts_pounds => {
+            Some('#') if digits.len() > 0 => {
                 pounds += 1;
             },
             Some('/') => match num_type {
@@ -328,34 +412,38 @@ fn parse_real<T: Iterator<Item=char>>(mut stream: &mut Peekable<T>, r: &Option<R
                     numerator = Some((digits, pounds));
                     digits = String::new();
                     pounds = 0;
-                    accepts_pounds = false;
                 },
-                _ => return Err("bad number".to_string())
+                _ => return Err("bad fraction".to_string())
             },
             Some('.') => match num_type {
                 Number::Int if radix == 10 => {
-                    point = digits.len();
+                    point = digits.len() + (pounds as usize);
                     num_type = Number::Decimal;
                 },
-                _ => return Err("bad number".to_string())
-            },
-            Some('0'...'9') | Some('a'...'f') if pounds == 0 && {
-                let n = u8::from_str_radix(&peek.unwrap().to_string(), 16).ok().unwrap();
-                n < radix
-            } => {
-                accepts_pounds = true;
-                digits.push(peek.unwrap());
+                _ => return Err("bad decimal".to_string())
             },
 
-            Some('e') | Some('s') | Some('f') | Some('d') | Some('l') => match num_type {
-                Number::Decimal => {
-                    // Read suffix
-                    unimplemented!()
-                },
-                _ => return Err("bad prefix".to_string())
-            },
-
-            Some('0'...'9') | Some('a'...'f') => return Err("bad digit".to_string()),
+            // https://github.com/rust-lang/rust/issues/26251
+            Some('0'...'9') | Some('a'...'f') | Some('s') | Some('l')  => {
+                if pounds == 0 && is_valid_digit!(peek.unwrap(), radix, num_type == Number::Decimal) {
+                    digits.push(peek.unwrap());
+                } else if num_type == Number::Decimal {
+                    let marker = peek.unwrap();
+                    if marker == 'e' || marker == 'f' || marker == 's' || marker == 'l' || marker == 'd' {
+                        match parse_suffix(stream).ok() {
+                            sf @ Some(_) => {
+                                suffix = sf;
+                                break;
+                            },
+                            _ => return Err("bad suffix".to_string()),
+                        }
+                    } else {
+                        return Err("bad marker".to_string());
+                    }
+                } else {
+                    return Err("bad digit".to_string());
+                }
+            }
 
             _ => break
         }
@@ -364,7 +452,7 @@ fn parse_real<T: Iterator<Item=char>>(mut stream: &mut Peekable<T>, r: &Option<R
     }
 
     if digits.len() == 0 {
-        return Err("bad number".to_string());
+        return Err("empty number".to_string());
     }
 
     Ok(match num_type {
@@ -385,81 +473,42 @@ fn parse_real<T: Iterator<Item=char>>(mut stream: &mut Peekable<T>, r: &Option<R
     })
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
-    use super::{parse_prefix, parse_real};
-    use super::super::Peekable;
-    use std::str;
+// It does not err if last char is not a delimiter
+// It is always called with a valid marker in the stream
+fn parse_suffix<T: Peekable>(stream: &mut T) -> Result<DecSuffix, String> {
+    let mut marker = ExpMarker::from(stream.next().unwrap());
+    let mut sign = None;
+    let mut digits = String::new();
 
-    fn stream(s: &str) -> Peekable<str::Chars> {
-        Peekable::from_iter(s.chars())
+    let peek = stream.small_peek();
+
+    match peek[0] {
+        Some('+') | Some('-') => {
+            sign = Some(NumSign::from(peek[0].unwrap()));
+            stream.next();
+        },
+        _ => {}
     }
 
-    fn next_token(s: &str) -> NumberToken {
-        parse_number(&mut Peekable::from_iter(s.chars())).ok().unwrap()
+    loop {
+        let peek = stream.small_peek();
+
+        match peek[0] {
+            Some(x) if is_digit!(x) => {
+                digits.push(x);
+                stream.next();
+            },
+            _ => break
+        }
     }
 
-    #[test]
-    fn prefix_test() {
-        assert!(parse_prefix(&mut stream("")).ok().unwrap() == (None, None));
-        assert!(parse_prefix(&mut stream("#e")).ok().unwrap() == (Some(Exactness::Exact), None));
-        assert!(parse_prefix(&mut stream("#o")).ok().unwrap() == (None, Some(Radix::Octal)));
-        assert!(parse_prefix(&mut stream("#d#i")).ok().unwrap() == (Some(Exactness::Inexact), Some(Radix::Decimal)));
-        assert!(parse_prefix(&mut stream("#d#")).is_err());
-        assert!(parse_prefix(&mut stream("#\\")).is_err());
-    }
-
-    fn integer_test() {
-        let n = "1";
-        let t = parse_real(&mut stream(n), &Some(Radix::Decimal)).ok().unwrap();
-        assert!(t.is_int());
-        assert!(t.fuzzy_digits() == 0);
-        assert!(t.digits() == n);
-
-        let n = "123";
-        let t = parse_real(&mut stream(n), &Some(Radix::Decimal)).ok().unwrap();
-        assert!(t.is_int());
-        assert!(t.fuzzy_digits() == 0);
-        assert!(t.digits() == n);
-
-        let n = "123#";
-        let t = parse_real(&mut stream(n), &Some(Radix::Decimal)).ok().unwrap();
-        assert!(t.is_int());
-        assert!(t.fuzzy_digits() == 1);
-        assert!(t.digits() == "123");
-    }
-
-    fn fraction_test() {
-        let n = "1/2";
-        let t = parse_real(&mut stream(n), &Some(Radix::Decimal)).ok().unwrap();
-        assert!(t.is_frac());
-        assert!(t.fuzzy_digits() == 0);
-        assert!(t.digits() == "1");
-        let denominator = t.den();
-        assert!(denominator.is_int());
-        assert!(denominator.fuzzy_digits() == 0);
-        assert!(denominator.digits() == "2");
-
-        let n = "12#/2";
-        let t = parse_real(&mut stream(n), &Some(Radix::Decimal)).ok().unwrap();
-        assert!(t.is_frac());
-        assert!(t.fuzzy_digits() == 1);
-        assert!(t.digits() == "12");
-        let denominator = t.den();
-        assert!(denominator.is_int());
-        assert!(denominator.fuzzy_digits() == 0);
-        assert!(denominator.digits() == "2");
-
-
-        let n = "12#/23#";
-        let t = parse_real(&mut stream(n), &Some(Radix::Decimal)).ok().unwrap();
-        assert!(t.is_frac());
-        assert!(t.fuzzy_digits() == 1);
-        assert!(t.digits() == "12");
-        let denominator = t.den();
-        assert!(denominator.is_int());
-        assert!(denominator.fuzzy_digits() == 1);
-        assert!(denominator.digits() == "23");
+    if digits.len() == 0 {
+        return Err("bad marker!".to_string());
+    } else {
+        return Ok(DecSuffix {
+            sign: sign,
+            marker: marker,
+            digits: digits
+        });
     }
 }
