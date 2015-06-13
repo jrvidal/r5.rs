@@ -1,9 +1,8 @@
-
-use std::ascii::AsciiExt;
 use super::Peekable;
 
 #[cfg(test)]
 mod test;
+
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct NumberToken {
@@ -86,11 +85,11 @@ impl From<char> for NumSign {
 
 impl From<char> for Radix {
     fn from(c: char) -> Radix {
-        match c.to_ascii_lowercase() {
-            'b' => Radix::Binary,
-            'o' => Radix::Octal,
-            'd' => Radix::Decimal,
-            'x' => Radix::Hexadecimal,
+        match c {
+            'b' | 'B' => Radix::Binary,
+            'o' | 'O' => Radix::Octal,
+            'd' | 'D' => Radix::Decimal,
+            'x' | 'X' => Radix::Hexadecimal,
             _ => panic!("Invalid radix!")
         }
     }
@@ -98,9 +97,9 @@ impl From<char> for Radix {
 
 impl From<char> for Exactness {
     fn from(c: char) -> Exactness {
-        match c.to_ascii_lowercase() {
-            'e' => Exactness::Exact,
-            'i' => Exactness::Inexact,
+        match c {
+            'e' | 'E' => Exactness::Exact,
+            'i' | 'I' => Exactness::Inexact,
             _ => panic!("Invalid exactness")
         }
     }
@@ -108,12 +107,12 @@ impl From<char> for Exactness {
 
 impl From<char> for ExpMarker {
     fn from(c: char) -> ExpMarker {
-        match c.to_ascii_lowercase() {
-            'e' => ExpMarker::Default,
-            's' => ExpMarker::Short,
-            'l' => ExpMarker::Long,
-            'f' => ExpMarker::Single,
-            'd' => ExpMarker::Double,
+        match c {
+            'e' | 'E' => ExpMarker::Default,
+            's' | 'S' => ExpMarker::Short,
+            'l' | 'L' => ExpMarker::Long,
+            'f' | 'F' => ExpMarker::Single,
+            'd' | 'D' => ExpMarker::Double,
             _ => panic!("Invalid exponential marker")
         }
     }
@@ -266,7 +265,7 @@ fn parse_prefix<T: Peekable>(mut stream: &mut T) -> Result<Prefix, String> {
         let peek = stream.small_peek();
 
         match peek[0] {
-            Some('#') => match peek[1].map(|c| c.to_ascii_lowercase()) {
+            Some('#') => match peek[1] {
                 None => return Err("no puedes".to_string()),
                 Some(e) => match e {
                     'i' | 'e' if exactness.is_none() => {
@@ -295,7 +294,7 @@ fn parse_complex<T: Peekable>(stream: &mut T, rad: Option<Radix>) -> Result<Comp
     }
 
     // ±i
-    if first_sign.is_some() && peek[1].map(|c| c.to_ascii_lowercase()) == Some('i') {
+    if first_sign.is_some() && peek[1] == Some('i') {
         if is_delimiter!(peek[2]) {
             return Ok(ComplexLiteral::Cartesian(None, first_sign.unwrap(), None));
         } else {
@@ -312,7 +311,7 @@ fn parse_complex<T: Peekable>(stream: &mut T, rad: Option<Radix>) -> Result<Comp
     let mut cartesian = true;
     let mut second_sign = None;
 
-    match peek[0].map(|c| c.to_ascii_lowercase()) {
+    match peek[0] {
         Some('+') | Some('-') => {
             second_sign = peek[0].map(NumSign::from);
             stream.next();
@@ -344,7 +343,7 @@ fn parse_complex<T: Peekable>(stream: &mut T, rad: Option<Radix>) -> Result<Comp
     let peek = stream.small_peek();
 
     // a±i
-    if cartesian && peek[0].map(|c| c.to_ascii_lowercase()) == Some('i') && is_delimiter!(peek[1]) {
+    if cartesian && peek[0] == Some('i') && is_delimiter!(peek[1]) {
         return Ok(ComplexLiteral::Cartesian(Some((first_sign, first_real)), second_sign.unwrap(), None));
     }
 
@@ -354,7 +353,7 @@ fn parse_complex<T: Peekable>(stream: &mut T, rad: Option<Radix>) -> Result<Comp
     };
 
     if cartesian {
-        if stream.small_peek()[0].map(|c| c.to_ascii_lowercase()) == Some('i') {
+        if stream.small_peek()[0] == Some('i') {
             stream.next();
         } else {
             return Err("bad cartesian".to_string());
@@ -380,8 +379,8 @@ fn parse_real<T: Peekable>(mut stream: &mut T, r: Option<Radix>) -> Result<RealL
     #[derive(Debug, PartialEq)]
     enum Number {
         Int,
-        Decimal,
-        Fraction
+        Dec,
+        Frac
     }
 
     macro_rules! is_valid_digit {
@@ -401,13 +400,12 @@ fn parse_real<T: Peekable>(mut stream: &mut T, r: Option<Radix>) -> Result<RealL
     let mut num_type = Number::Int;
     let mut digits = String::new();
     let mut pounds = 0;
-    // let mut accepts_pounds = false;
     let mut numerator = None;
     let mut point = 0;
     let mut suffix = None;
 
     loop {
-        let peek = stream.small_peek()[0].map(|c| c.to_ascii_lowercase());
+        let peek = stream.small_peek()[0];
 
         match peek {
             Some('#') if digits.len() > 0 => {
@@ -415,7 +413,7 @@ fn parse_real<T: Peekable>(mut stream: &mut T, r: Option<Radix>) -> Result<RealL
             },
             Some('/') => match num_type {
                 Number::Int if digits.len() > 0 => {
-                    num_type = Number::Fraction;
+                    num_type = Number::Frac;
                     numerator = Some((digits, pounds));
                     digits = String::new();
                     pounds = 0;
@@ -425,16 +423,16 @@ fn parse_real<T: Peekable>(mut stream: &mut T, r: Option<Radix>) -> Result<RealL
             Some('.') => match num_type {
                 Number::Int if radix == 10 => {
                     point = digits.len() + (pounds as usize);
-                    num_type = Number::Decimal;
+                    num_type = Number::Dec;
                 },
                 _ => return Err("bad decimal".to_string())
             },
 
             // https://github.com/rust-lang/rust/issues/26251
             Some('0'...'9') | Some('a'...'f') | Some('s') | Some('l')  => {
-                if pounds == 0 && is_valid_digit!(peek.unwrap(), radix, num_type == Number::Decimal) {
+                if pounds == 0 && is_valid_digit!(peek.unwrap(), radix, num_type == Number::Dec) {
                     digits.push(peek.unwrap());
-                } else if num_type == Number::Decimal {
+                } else if num_type == Number::Dec {
                     let marker = peek.unwrap();
                     if marker == 'e' || marker == 'f' || marker == 's' || marker == 'l' || marker == 'd' {
                         match parse_suffix(stream).ok() {
@@ -467,13 +465,13 @@ fn parse_real<T: Peekable>(mut stream: &mut T, r: Option<Radix>) -> Result<RealL
             digits: digits,
             pounds: pounds
         },
-        Number::Decimal => RealLiteral::Decimal {
+        Number::Dec => RealLiteral::Decimal {
             digits: digits,
             pounds: pounds,
             point: point,
             suffix: suffix
         },
-        Number::Fraction => RealLiteral::Fraction {
+        Number::Frac => RealLiteral::Fraction {
             numerator: numerator.unwrap(),
             denominator: (digits, pounds)
         }

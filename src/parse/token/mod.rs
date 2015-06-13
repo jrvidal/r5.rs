@@ -12,14 +12,6 @@ macro_rules! ret_val {
     });
 }
 
-macro_rules! delegate_parse_number {
-    ($s:expr) => (
-        return parse_number($s).map(|x| {
-            Some(Token::Number(x))
-        })
-    )
-}
-
 macro_rules! is_whitespace {
     ($x:expr) => ($x == ' ' || $x == '\n')
 }
@@ -98,6 +90,7 @@ const CHAR_NAME_NEWLINE : &'static [char] = &['n', 'e', 'w', 'l', 'i', 'n', 'e']
 pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, String> 
     where T: Iterator<Item=char>
 {
+    stream.toggle_case(false);
     let mut state = ParsingState::Normal;
     let mut string_buf = String::new();
 
@@ -106,14 +99,14 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, String>
         // Numbers are handled by peeking to delegate properly to parse_number
         if state == ParsingState::Normal {
             let peek = stream.small_peek();
-            match (peek[0], peek[1].map(lc)) {
+            match (peek[0], peek[1]) {
                 (None, _) => return Ok(None),
 
                 // Pound
                 (Some('#'), Some('t')) if is_delimiter!(peek[2]) => ret_val!(Token::Boolean(true), stream, 2),
                 (Some('#'), Some('f')) if is_delimiter!(peek[2]) => ret_val!(Token::Boolean(false), stream, 2),
                 (Some('#'), Some('(')) => ret_val!(Token::OpenVector, stream, 2),
-                (Some('#'), Some('\\')) => {/*delegate to main loop*/},
+                (Some('#'), Some('\\')) => {/*char, delegate to main loop*/},
 
                 (Some('#'), Some('e')) |
                 (Some('#'), Some('i')) |
@@ -125,7 +118,10 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, String>
                 (Some('+'), Some('0'...'9')) |
                 (Some('-'), Some('0'...'9')) |
                 (Some('.'), Some('0'...'9'))
-                    => delegate_parse_number!(&mut stream),
+                    => return parse_number(&mut stream).map(|x| {
+                            Some(Token::Number(x))
+                        }),
+
 
                 (Some('#'), _) => return Err("no puedes".to_string()),
 
@@ -155,7 +151,7 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, String>
                     continue;
                 }
 
-                match c.to_ascii_lowercase() {
+                match c {
                     '(' => ret_val!(Token::Open),
                     ')' => ret_val!(Token::Close),
                     '`' => ret_val!(Token::BackQuote),
@@ -178,16 +174,17 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, String>
                     '"' => {
                         string_buf.clear();
                         state = ParsingState::String;
+                        stream.toggle_case(true);
                     },
 
                     // It's '#\' for sure
                     '#' => {
                         stream.next();
-                        let next = stream.small_peek();
-                        match next[0].map(lc) {
+                        let next = stream.small_peek_sensitive();
+                        match next[0].map(|c| c.to_ascii_lowercase()) {
                             None => return Err("bad character".to_string()),
                             Some('s') | Some('n') if !is_delimiter!(next[1]) => {
-                                state = ParsingState::Character(next[0].map(lc).unwrap());
+                                state = ParsingState::Character(next[0].unwrap());
                             },
                             Some(_) if is_delimiter!(next[1]) => ret_val!(Token::Character(next[0].unwrap())),
                             _ => return Err("bad character!".to_string())
@@ -206,7 +203,7 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, String>
                         }
                     },
                     d if is_initial(d) => {
-                        match stream.small_peek()[0].map(lc) {
+                        match stream.small_peek()[0] {
                             Some(e) if is_subsequent(e) => {
                                 string_buf.clear();
                                 string_buf.push(d);
@@ -225,13 +222,13 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, String>
                 continue;
             },
             ParsingState::Character(d) => {
-                let char_name = if d.to_ascii_lowercase() == 's' {
+                let char_name = if d == 's' {
                     CHAR_NAME_SPACE
                 } else {
                     CHAR_NAME_NEWLINE
                 };
 
-                let big_peek = stream.peek().map(lc);
+                let big_peek = stream.peek();
                 let l = char_name.len() - 1;
 
                 for (i, x) in big_peek.map(|c| Some(c))
@@ -271,9 +268,9 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, String>
                 }
             },
             ParsingState::Identifier => {
-                string_buf.push(c.to_ascii_lowercase());
+                string_buf.push(c);
 
-                match peek[0].map(lc) {
+                match peek[0] {
                     Some (d) if is_subsequent(d) => {},
                     _ => ret_val!(Token::Identifier(string_buf.clone()))
                 }
@@ -282,11 +279,6 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, String>
         }
 
     }
-}
-
-#[inline]
-fn lc(c: char) -> char {
-    c.to_ascii_lowercase()
 }
 
 #[inline]

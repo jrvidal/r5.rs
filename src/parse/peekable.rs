@@ -1,7 +1,9 @@
 use std::fmt::{Debug, Formatter, Error};
+use std::ascii::AsciiExt;
 
 /**
-    A simple buffered reader to peek a chars stream
+    A simple buffered reader to peek a chars stream.
+    It's case insensitive by default.
 */
 
 const BUFFER_SIZE : u8 = 12;
@@ -21,15 +23,23 @@ impl Iterator for Peek {
             None
         } else {
             self.index += 1;
-            Some(self.buffer[self.index as usize - 1])
+            Some(self.buffer[self.index as usize - 1].to_ascii_lowercase())
         }
     }
 }
 
 pub trait Peekable : Iterator<Item=char> {
+    // Case insensitive
     fn peek(&mut self) -> Peek;
+
+    // Case insensitive
     fn small_peek(&mut self) -> [Option<char>; 3];
+
+    // Case sensitive
+    fn small_peek_sensitive(&mut self) -> [Option<char>; 3];
+
     fn advance(&mut self, n: usize);
+    fn toggle_case(&mut self, sensitive: bool);
 }
 
 /**
@@ -41,6 +51,7 @@ pub struct PeekableChars<T: Iterator<Item=char>> {
     end: u8,
     stream: T,
     exhausted: bool,
+    case_sensitive: bool,
 }
 
 impl<T> PeekableChars<T> where T: Iterator<Item=char> {
@@ -69,7 +80,8 @@ impl<T> PeekableChars<T> where T: Iterator<Item=char> {
             end: 0,
             stream: iterator,
             buffer: ['\x00'; BUFFER_SIZE as usize],
-            exhausted: false
+            exhausted: false,
+            case_sensitive: false,
         };
         p._load();
         p
@@ -93,7 +105,7 @@ impl<T> Peekable for PeekableChars<T> where T: Iterator<Item=char> {
         }
     }
 
-    fn small_peek(&mut self) -> [Option<char>; 3] {
+    fn small_peek_sensitive(&mut self) -> [Option<char>; 3] {
         if self.end - self.index < 3 {
             self._load();
         }
@@ -117,6 +129,31 @@ impl<T> Peekable for PeekableChars<T> where T: Iterator<Item=char> {
         result
     }
 
+
+    fn small_peek(&mut self) -> [Option<char>; 3] {
+        if self.end - self.index < 3 {
+            self._load();
+        }
+
+        let diff = self.end - self.index;
+
+        let mut result = [None; 3];
+
+        if diff > 0 {
+            result[0] = Some(self.buffer[self.index as usize].to_ascii_lowercase());
+        }
+
+        if diff > 1 {
+            result[1] = Some(self.buffer[self.index as usize + 1].to_ascii_lowercase());
+        }
+
+        if diff > 2 {
+            result[2] = Some(self.buffer[self.index as usize + 2].to_ascii_lowercase());
+        }
+
+        result
+    }
+
     fn advance(&mut self, n: usize) {
         if (self.end - self.index) as usize >= n {
             self.index += n as u8;
@@ -125,6 +162,10 @@ impl<T> Peekable for PeekableChars<T> where T: Iterator<Item=char> {
                 self.next();
             }
         }
+    }
+
+    fn toggle_case(&mut self, sensitive: bool) {
+        self.case_sensitive = sensitive;
     }
 
 }
@@ -141,7 +182,7 @@ impl<T> Iterator for PeekableChars<T> where T:Iterator<Item=char> {
             if self.index == self.end {
                 self._load();
             }
-            Some(c)
+            Some(if self.case_sensitive { c } else {c.to_ascii_lowercase()})
         }
     }
 }
