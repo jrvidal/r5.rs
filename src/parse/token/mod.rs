@@ -12,6 +12,12 @@ macro_rules! ret_val {
     });
 }
 
+macro_rules! ret_err {
+    ($err:ident) => ({
+        return Err(TokenizerError {error: TokenErrorClass::$err})
+    })
+}
+
 macro_rules! is_whitespace {
     ($x:expr) => ($x == ' ' || $x == '\n')
 }
@@ -35,7 +41,8 @@ macro_rules! is_digit {
 }
 
 mod number;
-use self::number::{parse_number, NumberToken};
+use self::number::parse_number;
+pub use self::number::NumberToken;
 
 #[cfg(test)]
 mod test;
@@ -60,7 +67,7 @@ mod test;
 pub enum Token {
     Identifier(String),
     Boolean(bool),
-    Number(NumberToken),
+    Number(Box<NumberToken>),
     Character(char),
     String(String),
     OpenVector,
@@ -72,6 +79,21 @@ pub enum Token {
     BackQuote,
     SingleQuote,
     Dot,
+}
+
+pub struct TokenizerError {
+    error: TokenErrorClass
+}
+
+enum TokenErrorClass {
+    InvalidPound,
+    InvalidCharName,
+    UnclosedString,
+    InvalidDot,
+    UnfinishedChar,
+    UnexpectedCharacter,
+    InvalidScaping,
+    InvalidNumber
 }
 
 #[derive(PartialEq, Debug)]
@@ -86,8 +108,7 @@ enum ParsingState {
 const CHAR_NAME_SPACE : &'static [char] = &['s', 'p', 'a', 'c', 'e'];
 const CHAR_NAME_NEWLINE : &'static [char] = &['n', 'e', 'w', 'l', 'i', 'n', 'e'];
 
-#[allow(dead_code)]
-pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, String> 
+pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, TokenizerError> 
     where T: Iterator<Item=char>
 {
     stream.toggle_case(false);
@@ -118,12 +139,12 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, String>
                 (Some('+'), Some('0'...'9')) |
                 (Some('-'), Some('0'...'9')) |
                 (Some('.'), Some('0'...'9'))
-                    => return parse_number(&mut stream).map(|x| {
-                            Some(Token::Number(x))
-                        }),
+                    => match parse_number(&mut stream) {
+                        Ok(nt) => ret_val!(Token::Number(Box::new(nt))),
+                        Err(_) => ret_err!(InvalidNumber),
+                    },
 
-
-                (Some('#'), _) => return Err("no puedes".to_string()),
+                (Some('#'), _) => ret_err!(InvalidPound),
 
                 _ => {/*delegate to main loop*/}
             }
@@ -133,12 +154,8 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, String>
             Some(d) => d,
 
             None => match state {
-                ParsingState::Character(_) => {
-                    return Err("no hay siguiente".to_string())
-                },
-                ParsingState::String => {
-                    return Err("no hay siguiente".to_string())
-                },
+                ParsingState::Character(_) => ret_err!(InvalidCharName),
+                ParsingState::String => ret_err!(UnclosedString),
                 _ => return Ok(None)
             }
         };
@@ -165,7 +182,7 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, String>
                                 ret_val!(Token::Identifier("...".to_string()));
                             },
                             (x, _) if is_delimiter!(x) => ret_val!(Token::Dot),
-                            _ => return Err("bad dot".to_string())
+                            _ => ret_err!(InvalidDot)
                         }
                     },
                     ';' => {
@@ -182,12 +199,12 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, String>
                         stream.next();
                         let next = stream.small_peek_sensitive();
                         match next[0].map(|c| c.to_ascii_lowercase()) {
-                            None => return Err("bad character".to_string()),
+                            None => ret_err!(UnfinishedChar),
                             Some('s') | Some('n') if !is_delimiter!(next[1]) => {
                                 state = ParsingState::Character(next[0].unwrap());
                             },
                             Some(_) if is_delimiter!(next[1]) => ret_val!(Token::Character(next[0].unwrap())),
-                            _ => return Err("bad character!".to_string())
+                            _ => ret_err!(InvalidCharName)
                         }
                     },
 
@@ -212,7 +229,7 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, String>
                             _ => ret_val!(Token::Identifier(d.to_string()))
                         }
                     },
-                    _ => return Err("no puedes".to_string())
+                    _ => ret_err!(UnexpectedCharacter)
                 }
             },
             ParsingState::Comment => {
@@ -245,7 +262,7 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, String>
                                 '\n'
                             }));
                         },
-                        _ => return Err("bad character name".to_string())
+                        _ => ret_err!(InvalidCharName)
                     }
 
                 }
@@ -261,7 +278,7 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, String>
                             Some('\\') => {
                                 string_buf.push('\\')
                             }
-                            _ => return Err("bad escaping".to_string()),
+                            _ => ret_err!(InvalidScaping),
                         }
                     },
                     _ => string_buf.push(c)
