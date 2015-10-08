@@ -1,8 +1,21 @@
-
-
 use std::ascii::AsciiExt;
 use std::iter;
-pub use super::peekable::Peekable;
+
+/**
+    Tokenizer
+
+    The R5RS specs states:
+
+    Tokens which require implicit termination (identifiers,
+    numbers, characters, and dot) may be terminated by any
+    delimiter, but not necessarily by anything else
+
+    We're going to interpret it as:
+
+    Tokens which require implicit termination (identifiers,
+    numbers, characters, and dot) must be terminated by a
+    delimiter.
+*/
 
 macro_rules! ret_val {
     ($x:expr) => (return Ok(Some($x)));
@@ -44,25 +57,6 @@ mod number;
 use self::number::parse_number;
 pub use self::number::NumberToken;
 
-#[cfg(test)]
-mod test;
-
-/**
-    Tokenizer
-
-    The R5RS specs states:
-
-    Tokens which require implicit termination (identifiers,
-    numbers, characters, and dot) may be terminated by any
-    delimiter, but not necessarily by anything else
-
-    We're going to interpret it as:
-
-    Tokens which require implicit termination (identifiers,
-    numbers, characters, and dot) must be terminated by a
-    delimiter.
-*/
-
 #[derive(Clone, PartialEq, Debug)]
 pub enum Token {
     Identifier(String),
@@ -96,6 +90,72 @@ enum TokenErrorClass {
     InvalidNumber
 }
 
+#[derive(Debug)]
+pub struct Chars {
+    vec: Vec<char>,
+    case_sensitive: bool,
+    index: usize
+}
+
+impl Iterator for Chars {
+    type Item = char;
+
+    fn next(&mut self) -> Option<char> {
+        let r = self.peek(0);
+        self.index += 1;
+        r
+    }
+}
+
+impl Chars {
+    fn peek(&self, i: usize) -> Option<char> {
+        let c = self.vec.get(self.index + i);
+
+        if self.case_sensitive {
+            c.cloned()
+        } else {
+            c.map(|&d| d.to_ascii_lowercase())
+        }
+    }
+
+    fn peek_sensitive(&self, i: usize) -> Option<char> {
+        self.vec.get(self.index + i).cloned()
+    }
+
+    fn advance(&mut self, n: usize) {
+        self.index += n;
+    }
+
+    fn from_vec(v: Vec<char>) -> Chars {
+        Chars {
+            vec: v,
+            case_sensitive: false,
+            index: 0
+        }
+    }
+
+    fn from_str(s: &str) -> Chars {
+        Chars::from_vec(s.chars().collect())
+    }
+}
+
+pub fn token_stream(chars: Vec<char>) -> Result<Vec<Token>, TokenizerError> {
+    let mut C = Chars::from_vec(chars);
+    let mut tokens = Vec::new();
+
+    loop {
+        match next_token(&mut C) {
+            Ok(r) => match r {
+                None => {break},
+                Some(t) => tokens.push(t)
+            },
+            Err(e) => return Err(e)
+        }
+    }
+
+    Ok(tokens)
+}
+
 #[derive(PartialEq, Debug)]
 enum ParsingState {
     Normal,
@@ -108,10 +168,8 @@ enum ParsingState {
 const CHAR_NAME_SPACE : &'static [char] = &['s', 'p', 'a', 'c', 'e'];
 const CHAR_NAME_NEWLINE : &'static [char] = &['n', 'e', 'w', 'l', 'i', 'n', 'e'];
 
-pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, TokenizerError> 
-    where T: Iterator<Item=char>
-{
-    stream.toggle_case(false);
+
+fn next_token(mut stream: &mut Chars) -> Result<Option<Token>, TokenizerError> {
     let mut state = ParsingState::Normal;
     let mut string_buf = String::new();
 
@@ -119,13 +177,12 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, Tokenizer
 
         // Numbers are handled by peeking to delegate properly to parse_number
         if state == ParsingState::Normal {
-            let peek = stream.small_peek();
-            match (peek[0], peek[1]) {
+            match (stream.peek(0), stream.peek(1)) {
                 (None, _) => return Ok(None),
 
                 // Pound
-                (Some('#'), Some('t')) if is_delimiter!(peek[2]) => ret_val!(Token::Boolean(true), stream, 2),
-                (Some('#'), Some('f')) if is_delimiter!(peek[2]) => ret_val!(Token::Boolean(false), stream, 2),
+                (Some('#'), Some('t')) if is_delimiter!(stream.peek(2)) => ret_val!(Token::Boolean(true), stream, 2),
+                (Some('#'), Some('f')) if is_delimiter!(stream.peek(2)) => ret_val!(Token::Boolean(false), stream, 2),
                 (Some('#'), Some('(')) => ret_val!(Token::OpenVector, stream, 2),
                 (Some('#'), Some('\\')) => {/*char, delegate to main loop*/},
 
@@ -160,8 +217,6 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, Tokenizer
             }
         };
 
-        let peek = stream.small_peek();
-
         match state {
             ParsingState::Normal => {
                 if c.is_whitespace() {
@@ -176,8 +231,8 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, Tokenizer
 
                     // Numbers are already handled
                     '.' => {
-                        match (peek[0], peek[1]) {
-                            (Some('.'), Some('.')) if is_delimiter!(peek[2]) => {
+                        match (stream.peek(0), stream.peek(1)) {
+                            (Some('.'), Some('.')) if is_delimiter!(stream.peek(2)) => {
                                 stream.advance(2);
                                 ret_val!(Token::Identifier("...".to_string()));
                             },
@@ -191,27 +246,27 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, Tokenizer
                     '"' => {
                         string_buf.clear();
                         state = ParsingState::String;
-                        stream.toggle_case(true);
+                        stream.case_sensitive = true;
                     },
 
                     // It's '#\' for sure
                     '#' => {
                         stream.next();
-                        let next = stream.small_peek_sensitive();
-                        match next[0].map(|c| c.to_ascii_lowercase()) {
+                        let next = stream.peek_sensitive(0);
+                        match next.map(|c| c.to_ascii_lowercase()) {
                             None => ret_err!(UnfinishedChar),
-                            Some('s') | Some('n') if !is_delimiter!(next[1]) => {
-                                state = ParsingState::Character(next[0].unwrap());
+                            Some('s') | Some('n') if !is_delimiter!(stream.peek_sensitive(1)) => {
+                                state = ParsingState::Character(next.unwrap());
                             },
-                            Some(_) if is_delimiter!(next[1]) => ret_val!(Token::Character(next[0].unwrap())),
+                            Some(_) if is_delimiter!(stream.peek_sensitive(1)) => ret_val!(Token::Character(next.unwrap())),
                             _ => ret_err!(InvalidCharName)
                         }
                     },
 
                     // It's an identifier
-                    '+' | '-' if is_delimiter!(peek[0]) => ret_val!(Token::Identifier(c.to_string())),
+                    '+' | '-' if is_delimiter!(stream.peek(0)) => ret_val!(Token::Identifier(c.to_string())),
                     ',' => {
-                        match peek[0] {
+                        match stream.peek(0) {
                             Some('@') => {
                                 stream.next();
                                 ret_val!(Token::CommaAt)
@@ -220,7 +275,7 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, Tokenizer
                         }
                     },
                     d if is_initial(d) => {
-                        match stream.small_peek()[0] {
+                        match stream.peek(0) {
                             Some(e) if is_subsequent(e) => {
                                 string_buf.clear();
                                 string_buf.push(d);
@@ -245,26 +300,24 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, Tokenizer
                     CHAR_NAME_NEWLINE
                 };
 
-                let big_peek = stream.peek();
                 let l = char_name.len() - 1;
+                let mut i = 0;
 
-                for (i, x) in big_peek.map(|c| Some(c))
-                        .chain(iter::repeat(None))
-                        .enumerate() {
-
-                    match (i, x) {
-                        (_, Some(c)) if i < l && c == char_name[i + 1] => {},
-                        _ if i == l && is_delimiter!(x)  => {
-                            stream.advance(l);
-                            ret_val!(Token::Character(if char_name == CHAR_NAME_SPACE {
-                                ' '
-                            } else {
-                                '\n'
-                            }));
-                        },
-                        _ => ret_err!(InvalidCharName)
+                loop {
+                    let c = stream.peek(i);
+                    if i == l && is_delimiter!(c) {
+                        stream.advance(l);
+                        ret_val!(Token::Character(if char_name == CHAR_NAME_SPACE {
+                            ' '
+                        } else {
+                            '\n'
+                        }));
+                    } else if i != l && c == Some(char_name[i + 1]) {
+                        i += 1;
+                        continue;
+                    } else {
+                        ret_err!(InvalidCharName);
                     }
-
                 }
             },
             ParsingState::String => {
@@ -287,7 +340,7 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, Tokenizer
             ParsingState::Identifier => {
                 string_buf.push(c);
 
-                match peek[0] {
+                match stream.peek(0) {
                     Some (d) if is_subsequent(d) => {},
                     _ => ret_val!(Token::Identifier(string_buf.clone()))
                 }
@@ -296,7 +349,11 @@ pub fn next_token<T: Peekable>(mut stream: T) -> Result<Option<Token>, Tokenizer
         }
 
     }
+
 }
+
+#[cfg(test)]
+mod test;
 
 #[inline]
 fn is_initial(c: char) -> bool {
