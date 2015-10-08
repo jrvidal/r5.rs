@@ -1,4 +1,4 @@
-use super::Peekable;
+use super::Chars;
 
 #[cfg(test)]
 mod test;
@@ -245,7 +245,7 @@ impl ComplexLiteral {
 type Prefix = (Option<Exactness>, Option<Radix>);
 
 // stream is guaranteed to be non-empty
-pub fn parse_number<T: Peekable> (mut stream: &mut T) -> Result<NumberToken, String> {
+pub fn parse_number(mut stream: &mut Chars) -> Result<NumberToken, String> {
     parse_prefix(stream).and_then(|(e, r)| {
         parse_complex(stream, r).map(|n| (e, r, n))
     }).map(|(e, r, n)| {
@@ -257,15 +257,13 @@ pub fn parse_number<T: Peekable> (mut stream: &mut T) -> Result<NumberToken, Str
     })
 }
 
-fn parse_prefix<T: Peekable>(mut stream: &mut T) -> Result<Prefix, String> {
+fn parse_prefix(mut stream: &mut Chars) -> Result<Prefix, String> {
     let mut exactness = None;
     let mut radix = None;
 
     loop {
-        let peek = stream.small_peek();
-
-        match peek[0] {
-            Some('#') => match peek[1] {
+        match stream.peek(0) {
+            Some('#') => match stream.peek(1) {
                 None => return Err("no puedes".to_string()),
                 Some(e) => match e {
                     'i' | 'e' if exactness.is_none() => {
@@ -283,19 +281,19 @@ fn parse_prefix<T: Peekable>(mut stream: &mut T) -> Result<Prefix, String> {
     }
 }
 
-fn parse_complex<T: Peekable>(stream: &mut T, rad: Option<Radix>) -> Result<ComplexLiteral, String> {
+fn parse_complex(stream: &mut Chars, rad: Option<Radix>) -> Result<ComplexLiteral, String> {
 
-    let peek = stream.small_peek();
+    let peek = stream.peek(0);
     let mut first_sign = None;
 
-    if peek[0] == Some('+') || peek[0] == Some('-') {
-        first_sign = peek[0].map(NumSign::from);
+    if peek == Some('+') || peek == Some('-') {
+        first_sign = peek.map(NumSign::from);
         stream.next();
     }
 
     // ±i
-    if first_sign.is_some() && peek[1] == Some('i') {
-        if is_delimiter!(peek[2]) {
+    if first_sign.is_some() && stream.peek(1) == Some('i') {
+        if is_delimiter!(stream.peek(2)) {
             return Ok(ComplexLiteral::Cartesian(None, first_sign.unwrap(), None));
         } else {
             return Err("bad delimiter".to_string());
@@ -307,21 +305,21 @@ fn parse_complex<T: Peekable>(stream: &mut T, rad: Option<Radix>) -> Result<Comp
         Err(e) => return Err(e)
     };
 
-    let peek = stream.small_peek();
+    let peek = stream.peek(0);
     let mut cartesian = true;
     let mut second_sign = None;
 
-    match peek[0] {
+    match peek {
         Some('+') | Some('-') => {
-            second_sign = peek[0].map(NumSign::from);
+            second_sign = peek.map(NumSign::from);
             stream.next();
         },
         Some('@') => {
             cartesian = false;
 
-            match peek[1] {
+            match stream.peek(1) {
                 Some('+') | Some('-') => {
-                    second_sign = peek[1].map(NumSign::from);
+                    second_sign = stream.peek(1).map(NumSign::from);
                     stream.next();
                 },
                 _ => {}
@@ -330,20 +328,18 @@ fn parse_complex<T: Peekable>(stream: &mut T, rad: Option<Radix>) -> Result<Comp
         },
 
         // ±ai
-        Some('i') if first_sign.is_some() && is_delimiter!(peek[1]) => {
+        Some('i') if first_sign.is_some() && is_delimiter!(stream.peek(1)) => {
             stream.next();
             return Ok(ComplexLiteral::Cartesian(None, first_sign.unwrap(), Some(first_real)));
         },
 
-        _ if is_delimiter!(peek[0]) => return Ok(ComplexLiteral::Real(first_sign, first_real)),
+        _ if is_delimiter!(peek) => return Ok(ComplexLiteral::Real(first_sign, first_real)),
         _ => return Err("bad delimiter".to_string()),
     }
 
 
-    let peek = stream.small_peek();
-
     // a±i
-    if cartesian && peek[0] == Some('i') && is_delimiter!(peek[1]) {
+    if cartesian && stream.peek(0) == Some('i') && is_delimiter!(stream.peek(1)) {
         return Ok(ComplexLiteral::Cartesian(Some((first_sign, first_real)), second_sign.unwrap(), None));
     }
 
@@ -353,17 +349,15 @@ fn parse_complex<T: Peekable>(stream: &mut T, rad: Option<Radix>) -> Result<Comp
     };
 
     if cartesian {
-        if stream.small_peek()[0] == Some('i') {
+        if stream.peek(0) == Some('i') {
             stream.next();
         } else {
             return Err("bad cartesian".to_string());
         }
     }
 
-    let peek = stream.small_peek();
-
-    match peek[0] {
-        _ if !is_delimiter!(peek[0]) => return Err("bad delimiter".to_string()),
+    match stream.peek(0) {
+        _ if !is_delimiter!(stream.peek(0)) => return Err("bad delimiter".to_string()),
         _ => if cartesian {
             Ok(ComplexLiteral::Cartesian(
                 Some((first_sign, first_real)), second_sign.unwrap(), Some(second_real)
@@ -375,7 +369,7 @@ fn parse_complex<T: Peekable>(stream: &mut T, rad: Option<Radix>) -> Result<Comp
 }
 
 // It does not err if last char is not a delimiter
-fn parse_real<T: Peekable>(mut stream: &mut T, r: Option<Radix>) -> Result<RealLiteral, String> {
+fn parse_real(mut stream: &mut Chars, r: Option<Radix>) -> Result<RealLiteral, String> {
     #[derive(Debug, PartialEq)]
     enum Number {
         Int,
@@ -405,7 +399,7 @@ fn parse_real<T: Peekable>(mut stream: &mut T, r: Option<Radix>) -> Result<RealL
     let mut suffix = None;
 
     loop {
-        let peek = stream.small_peek()[0];
+        let peek = stream.peek(0);
 
         match peek {
             Some('#') if digits.len() > 0 => {
@@ -480,25 +474,21 @@ fn parse_real<T: Peekable>(mut stream: &mut T, r: Option<Radix>) -> Result<RealL
 
 // It does not err if last char is not a delimiter
 // It is always called with a valid marker in the stream
-fn parse_suffix<T: Peekable>(stream: &mut T) -> Result<DecSuffix, String> {
+fn parse_suffix(stream: &mut Chars) -> Result<DecSuffix, String> {
     let mut marker = ExpMarker::from(stream.next().unwrap());
     let mut sign = None;
     let mut digits = String::new();
 
-    let peek = stream.small_peek();
-
-    match peek[0] {
+    match stream.peek(0) {
         Some('+') | Some('-') => {
-            sign = Some(NumSign::from(peek[0].unwrap()));
+            sign = Some(NumSign::from(stream.peek(0).unwrap()));
             stream.next();
         },
         _ => {}
     }
 
     loop {
-        let peek = stream.small_peek();
-
-        match peek[0] {
+        match stream.peek(0) {
             Some(x) if is_digit!(x) => {
                 digits.push(x);
                 stream.next();

@@ -1,14 +1,14 @@
 use super::*;
-use super::super::peekable::PeekableChars;
+use super::{next_token};
 
 fn assert_next(code: &str, token: Token) {
-    let result = next_token(PeekableChars::from_iter(code.chars())).ok().unwrap().unwrap();
+    let result = next_token(&mut Chars::from_str(code)).ok().unwrap().unwrap();
     println!("{:?}", result);
     assert!(result == token);
 }
 
 fn assert_next_identifier(code: &str, identifier: &str) {
-    match next_token(PeekableChars::from_iter(code.chars())).ok().unwrap().unwrap() {
+    match next_token(&mut Chars::from_str(code)).ok().unwrap().unwrap() {
         Token::Identifier(id) => {
             println!("{:?} {:?}", id, identifier);
             assert!(id == identifier);
