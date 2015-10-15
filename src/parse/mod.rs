@@ -1,5 +1,5 @@
 
 #[macro_use]
 mod macros;
-mod token;
-mod ast;
+pub mod token;
+pub mod ast;

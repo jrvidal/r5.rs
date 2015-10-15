@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-pub use super::super::token::{Token, NumberToken};
+use ::parse::token::{Token, NumberToken};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Datum {
@@ -131,25 +131,13 @@ pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, ()>{
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::collections::VecDeque;
-    use std::iter::FromIterator;
-
-    macro_rules! oksome {
-        ($x:expr) => (Ok(Some($x)))
-    }
-
-    fn tokens(t: &[Token]) -> VecDeque<Token> {
-        let mut stream = VecDeque::new();
-        for token in t.iter().cloned() {
-            stream.push_back(token);
-        }
-        stream
-    }
+    use ::parse::token::{Token};
+    use super::super::tokens;
 
     #[test]
     fn boolean_datum_test() {
         let mut stream = tokens(&[Token::Boolean(false)]);
-        assert_eq!(parse_datum(&mut stream), oksome!(Datum::Boolean(false)));
+        assert_eq!(parse_datum(&mut stream), ok_some!(Datum::Boolean(false)));
     }
 
     #[test]
@@ -159,7 +147,7 @@ mod test {
             head: vec![Datum::Character('a')],
             last: None
         };
-        assert_eq!(parse_datum(&mut stream), oksome!(expected));
+        assert_eq!(parse_datum(&mut stream), ok_some!(expected));
     }
 
     #[test]
@@ -172,7 +160,7 @@ mod test {
             head: vec![Datum::Character('a')],
             last: Some(Box::new(Datum::String(s.clone())))
         };
-        assert_eq!(parse_datum(&mut stream), oksome!(expected));
+        assert_eq!(parse_datum(&mut stream), ok_some!(expected));
     }
 
     #[test]
@@ -198,7 +186,7 @@ mod test {
     fn vector_test() {
         let mut stream = tokens(&[Token::OpenVector, Token::Boolean(true), Token::Close]);
 
-        assert_eq!(parse_datum(&mut stream), oksome!(Datum::Vector(vec![Datum::Boolean(true)])));
+        assert_eq!(parse_datum(&mut stream), ok_some!(Datum::Vector(vec![Datum::Boolean(true)])));
     }
 
     #[test]
@@ -220,7 +208,7 @@ mod test {
                 last: None
             })
         };
-        assert_eq!(parse_datum(&mut stream), oksome!(expected));
+        assert_eq!(parse_datum(&mut stream), ok_some!(expected));
     }
 
     #[test]
