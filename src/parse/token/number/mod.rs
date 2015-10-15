@@ -119,25 +119,32 @@ impl From<char> for ExpMarker {
 }
 
 impl RealLiteral {
+    // REVISIT
+    #[cfg(test)]
     fn is_int(&self) -> bool {
         match *self {
             RealLiteral::Integer {..} => true,
             _ => false
         }
     }
+    // REVISIT
+    #[cfg(test)]
     fn is_dec(&self) -> bool {
         match *self {
             RealLiteral::Decimal {..} => true,
             _ => false
         }
     }
+    // REVISIT
+    #[cfg(test)]
     fn is_frac(&self) -> bool {
         match *self {
             RealLiteral::Fraction {..} => true,
             _ => false
         }
     }
-
+    // REVISIT
+    #[cfg(test)]
     fn digits(&self) -> &str {
         match *self {
             RealLiteral::Integer {ref digits, ..} => &digits,
@@ -146,7 +153,8 @@ impl RealLiteral {
                 numerator: (ref digits, _), ..} => &digits,
         }
     }
-
+    // REVISIT
+    #[cfg(test)]
     fn fuzzy_digits(&self) -> u8 {
         match *self {
             RealLiteral::Decimal {pounds, ..} => pounds,
@@ -155,6 +163,8 @@ impl RealLiteral {
         }
     }
 
+    // REVISIT
+    #[cfg(test)]
     fn decimal_point(&self) -> usize {
         match *self {
             RealLiteral::Decimal {point, ..} => point,
@@ -162,13 +172,16 @@ impl RealLiteral {
         }
     }
 
+    // REVISIT
+    #[cfg(test)]
     fn decimal_suffix(&self) -> &Option<DecSuffix> {
         match *self {
             RealLiteral::Decimal {ref suffix, ..} => &suffix,
             _ => panic!("Not a decimal!")
         }
     }
-
+    // REVISIT
+    #[cfg(wtf)]
     fn num(&self) -> RealLiteral {
         match *self {
             RealLiteral::Fraction {
@@ -181,6 +194,8 @@ impl RealLiteral {
             _ => panic!("Not a fraction")
         }
     }
+    // REVISIT
+    #[cfg(test)]
     fn den(&self) -> RealLiteral {
         match *self {
             RealLiteral::Fraction {
@@ -196,24 +211,29 @@ impl RealLiteral {
 }
 
 impl ComplexLiteral {
+    #[cfg(wtf)]
     fn is_cartesian(&self) -> bool {
         match *self {
             ComplexLiteral::Cartesian(..) => true,
             _ => false
         }
     }
+    #[cfg(wtf)]
     fn is_polar(&self) -> bool {
         match *self {
             ComplexLiteral::Polar(..) => true,
             _ => false
         }
     }
+    #[cfg(wtf)]
     fn is_real(&self) -> bool {
         match *self {
             ComplexLiteral::Real(..) => true,
             _ => false
         }
     }
+    // REVISIT
+    #[cfg(test)]
     fn real_part(&self) -> Option<(Option<NumSign>, &RealLiteral)> {
         match *self {
             ComplexLiteral::Cartesian(None, _, _) => None,
@@ -222,18 +242,24 @@ impl ComplexLiteral {
             _ => panic!("Not a cartesian or real literal")
         }
     }
+    // REVISIT
+    #[cfg(test)]
     fn imaginary_part(&self) -> (NumSign, Option<&RealLiteral>) {
         match *self {
             ComplexLiteral::Cartesian(_, s, ref r) => (s, r.as_ref()),
             _ => panic!("Not a cartesian literal")
         }
     }
+    // REVISIT
+    #[cfg(test)]
     fn modulus(&self) -> (Option<NumSign>, &RealLiteral) {
         match *self {
             ComplexLiteral::Polar(s, ref r, _, _) => (s, r),
             _ => panic!("Not a polar literal")
         }
     }
+    // REVISIT
+    #[cfg(test)]
     fn phase(&self) -> (Option<NumSign>, &RealLiteral) {
         match *self {
             ComplexLiteral::Polar(_, _, s, ref r) => (s, r),
@@ -475,7 +501,7 @@ fn parse_real(mut stream: &mut Chars, r: Option<Radix>) -> Result<RealLiteral, S
 // It does not err if last char is not a delimiter
 // It is always called with a valid marker in the stream
 fn parse_suffix(stream: &mut Chars) -> Result<DecSuffix, String> {
-    let mut marker = ExpMarker::from(stream.next().unwrap());
+    let marker = ExpMarker::from(stream.next().unwrap());
     let mut sign = None;
     let mut digits = String::new();
 

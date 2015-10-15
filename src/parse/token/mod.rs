@@ -1,5 +1,4 @@
 use std::ascii::AsciiExt;
-use std::iter;
 
 /**
     Tokenizer
@@ -126,17 +125,19 @@ impl Chars {
         }
     }
 
+    // REVISIT
+    #[cfg(test)]
     fn from_str(s: &str) -> Chars {
         Chars::from_vec(s.chars().collect())
     }
 }
 
 pub fn token_stream(chars: Vec<char>) -> Result<Vec<Token>, TokenizerError> {
-    let mut C = Chars::from_vec(chars);
+    let mut stream = Chars::from_vec(chars);
     let mut tokens = Vec::new();
 
     loop {
-        match next_token(&mut C) {
+        match next_token(&mut stream) {
             Ok(r) => match r {
                 None => {break},
                 Some(t) => tokens.push(t)

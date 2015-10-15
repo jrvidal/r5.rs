@@ -1,11 +1,6 @@
 use super::*;
 use super::super::Chars;
 use super::{parse_prefix, parse_real, parse_suffix, parse_complex};
-use std::str;
-
-fn next_token(s: &str) -> NumberToken {
-    parse_number(&mut Chars::from_str(s)).ok().unwrap()
-}
 
 #[test]
 fn prefix() {
@@ -55,53 +50,54 @@ fn suffix() {
 #[test]
 #[should_panic]
 fn suffix_bad_marker_empty() {
-    let t = parse_suffix(&mut Chars::from_str(""));
+    assert!(parse_suffix(&mut Chars::from_str("")).is_err());
 }
 
 #[test]
 #[should_panic]
 fn suffix_bad_marker_nonexistant() {
-    let t = parse_suffix(&mut Chars::from_str("z"));
+    assert!(parse_suffix(&mut Chars::from_str("z")).is_err());
 }
 
-
-macro_rules! assert_int {
-    ($t:expr, $fuzzy:expr, $digits:expr) => ({
-        assert!($t.is_int());
-        assert!($t.fuzzy_digits() == $fuzzy);
-        assert!($t.digits() == $digits);
-    })
+fn assert_int(t: &RealLiteral, fuzzy: u8, digits: &str) {
+    assert!(t.is_int());
+    assert!(t.fuzzy_digits() == fuzzy);
+    assert!(t.digits() == digits);
 }
+
 #[test]
 fn parse_real_with_integer() {
 
     let n = "1";
     let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
-    assert_int!(t, 0, n);
+    // Manual
+    assert!(t.is_int());
+    assert!(t.fuzzy_digits() == 0);
+    assert!(t.digits() == n);
 
     let n = "123";
     let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
-    assert_int!(t, 0, n);
+    assert_int(&t, 0, n);
 
     // Other radixes
     let n = "1010111";
     let t = parse_real(&mut Chars::from_str(n), Some(Radix::Binary)).ok().unwrap();
-    assert_int!(t, 0, n);
+    assert_int(&t, 0, n);
 
     // Other radixes, case-insensitive
     let n = "10A01f1";
     let t = parse_real(&mut Chars::from_str(n), Some(Radix::Hexadecimal)).ok().unwrap();
-    assert_int!(t, 0, "10a01f1");
+    assert_int(&t, 0, "10a01f1");
 
     // Fuzzy digits
     let n = "123#";
     let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
-    assert_int!(t, 1, "123");
+    assert_int(&t, 1, "123");
 
     // Invalid symbols don't cause errors
     let n = "123z";
     let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
-    assert_int!(t, 0, "123");
+    assert_int(&t, 0, "123");
 }
 
 #[test]
@@ -272,7 +268,7 @@ fn parse_complex_with_cartesian() {
     let t = parse_complex(&mut Chars::from_str(n), None).ok().unwrap();
     let (s, r) = t.real_part().unwrap();
     assert!(s == None);
-    assert_int!(r, 0, "1");
+    assert_int(r, 0, "1");
     let (s, r) = t.imaginary_part();
     assert!(s == NumSign::Plus);
     assert!(r == None);
@@ -281,10 +277,10 @@ fn parse_complex_with_cartesian() {
     let t = parse_complex(&mut Chars::from_str(n), None).ok().unwrap();
     let (s, r) = t.real_part().unwrap();
     assert!(s == None);
-    assert_int!(r, 1, "1");
+    assert_int(r, 1, "1");
     let (s, r) = t.imaginary_part();
     assert!(s == NumSign::Minus);
-    assert_int!(r.unwrap(), 0, "2");
+    assert_int(r.unwrap(), 0, "2");
 
     let n = "-1.3+2/1i";
     let t = parse_complex(&mut Chars::from_str(n), None).ok().unwrap();
@@ -300,7 +296,7 @@ fn parse_complex_with_cartesian() {
     assert!(None == t.real_part());
     let (s, r) = t.imaginary_part();
     assert!(s == NumSign::Plus);
-    assert_int!(r.unwrap(), 0, "3af");
+    assert_int(r.unwrap(), 0, "3af");
 
     // With delimiter
     let n = "-1.3+2/1I)";
@@ -319,10 +315,10 @@ fn parse_complex_with_polar() {
     let t = parse_complex(&mut Chars::from_str(n), None).ok().unwrap();
     let (s, r) = t.modulus();
     assert!(s == Some(NumSign::Plus));
-    assert_int!(r, 0, "1");
+    assert_int(r, 0, "1");
     let (s, r) = t.phase();
     assert!(s == None);
-    assert_int!(r, 0, "2");
+    assert_int(r, 0, "2");
 
     let n = "+12#.#@-23";
     let t = parse_complex(&mut Chars::from_str(n), None).ok().unwrap();
@@ -331,7 +327,7 @@ fn parse_complex_with_polar() {
     assert_dec!(r, 2, "12", 3);
     let (s, r) = t.phase();
     assert!(s == Some(NumSign::Minus));
-    assert_int!(r, 0, "23");
+    assert_int(r, 0, "23");
 
     let n = "3/A#@3#";
     let t = parse_complex(&mut Chars::from_str(n), Some(Radix::Hexadecimal)).ok().unwrap();
@@ -340,7 +336,7 @@ fn parse_complex_with_polar() {
     assert_frac!(r, [0, "3"], [1, "a"]);
     let (s, r) = t.phase();
     assert!(s == None);
-    assert_int!(r, 1, "3");
+    assert_int(r, 1, "3");
 
     // With delimiter
     let n = "+12#.#@-23\"";
@@ -350,7 +346,7 @@ fn parse_complex_with_polar() {
     assert_dec!(r, 2, "12", 3);
     let (s, r) = t.phase();
     assert!(s == Some(NumSign::Minus));
-    assert_int!(r, 0, "23");
+    assert_int(r, 0, "23");
 }
 
 #[test]
