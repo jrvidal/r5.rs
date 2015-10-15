@@ -17,14 +17,6 @@ use std::iter;
     delimiter.
 */
 
-macro_rules! ret_val {
-    ($x:expr) => (return Ok(Some($x)));
-    ($x:expr, $s:ident, $n:expr) => ({
-        $s.advance($n);
-        return Ok(Some($x))
-    });
-}
-
 macro_rules! ret_err {
     ($err:ident) => ({
         return Err(TokenizerError {error: TokenErrorClass::$err})
@@ -61,7 +53,7 @@ pub use self::number::NumberToken;
 pub enum Token {
     Identifier(String),
     Boolean(bool),
-    Number(Box<NumberToken>),
+    Number(NumberToken),
     Character(char),
     String(String),
     OpenVector,
@@ -197,7 +189,7 @@ fn next_token(mut stream: &mut Chars) -> Result<Option<Token>, TokenizerError> {
                 (Some('-'), Some('0'...'9')) |
                 (Some('.'), Some('0'...'9'))
                     => match parse_number(&mut stream) {
-                        Ok(nt) => ret_val!(Token::Number(Box::new(nt))),
+                        Ok(nt) => ret_val!(Token::Number(nt)),
                         Err(_) => ret_err!(InvalidNumber),
                     },
 
