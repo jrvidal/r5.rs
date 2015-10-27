@@ -183,6 +183,18 @@ mod test {
     }
 
     #[test]
+    fn double_tail_list_test() {
+        let mut stream = tokens(&[
+            Token::Open,
+               Token::Character('a'),
+               Token::Dot,
+               Token::Boolean(true),
+               Token::String("foo".to_string()),
+            Token::Close]);
+        assert!(parse_datum(&mut stream).is_err());
+    }
+
+    #[test]
     fn vector_test() {
         let mut stream = tokens(&[Token::OpenVector, Token::Boolean(true), Token::Close]);
 
