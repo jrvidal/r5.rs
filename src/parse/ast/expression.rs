@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use ::parse::token::{Token, NumberToken};
 use super::datum::{Datum, parse_datum};
+use ::parse::keywords;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
@@ -51,29 +52,6 @@ macro_rules! one_of {
     ($x:expr, [ $c:expr, $( $d:expr ),* ]) => (
         $x == $c || one_of!($x, [$( $d ),* ])
     )
-}
-
-mod keywords {
-    pub const IF : &'static str = "if";
-    pub const OR : &'static str = "or";
-    pub const ARROW : &'static str = "=>";
-    pub const DO : &'static str = "do";
-    pub const AND : &'static str = "and";
-    pub const LET : &'static str = "let";
-    pub const ELSE : &'static str = "else";
-    pub const SET_BANG : &'static str = "set!";
-    pub const COND : &'static str = "cond";
-    pub const CASE : &'static str = "case";
-    pub const LET_STAR : &'static str = "let*";
-    pub const QUOTE : &'static str = "quote";
-    pub const BEGIN : &'static str = "begin";
-    pub const DELAY : &'static str = "delay";
-    pub const DEFINE : &'static str = "define";
-    pub const LAMBDA : &'static str = "lambda";
-    pub const LETREC : &'static str = "letrec";
-    pub const UNQUOTE : &'static str = "unquote";
-    pub const QUASIQUOTE : &'static str = "quasiquote";
-    pub const UNQUOTE_SPLICING : &'static str = "unquote-splicing";
 }
 
 fn is_syntactic_keyword(name: &str) -> bool {
@@ -141,7 +119,7 @@ pub fn parse_expression(mut stream: &mut VecDeque<Token>) -> Result<Option<Expre
         _ => return Err(())
     }
 
-    // Last token was '(' and there is a next token for sure
+    // Last token was '(' and there is a next token for sure.
 
     // Discard function calls
     if match stream.get(0).unwrap() {
@@ -153,12 +131,46 @@ pub fn parse_expression(mut stream: &mut VecDeque<Token>) -> Result<Option<Expre
         return parse_call_exp(&mut stream);
     }
 
-    // List matcher
-    match t {
+    let k = match stream.pop_front() {
+        Some(Token::Identifier(s)) => s,
+        _ => "__error__".to_string()
+    };
+
+    match &k[..] {
+        keywords::IF => match (
+            parse_expression(&mut stream),
+            parse_expression(&mut stream),
+            parse_expression(&mut stream),
+            consume_close(&mut stream)
+        ) {
+            (Ok(Some(test)), Ok(Some(cons)), Ok(alt), true) => ret_val!(Expression::Conditional {
+                test: Box::new(test),
+                consequent: Box::new(cons),
+                alternate: alt.map(|e| {Box::new(e)})
+            }),
+            _ => return Err(())
+        },
+        keywords::SET_BANG => match (
+            parse_expression(&mut stream),
+            parse_expression(&mut stream),
+            consume_close(&mut stream),
+        ) {
+            (Ok(Some(Expression::Variable(s))), Ok(Some(rv)), true) => ret_val!(Expression::Assignment {
+                variable: s,
+                expression: Box::new(rv)
+            }),
+            _ => return Err(())
+        },
+        keywords::LAMBDA => match (
+
+        ) {
+            _ => return Err(())
+        },
         _ => panic!()
     }
 }
 
+// Never returns Ok(None)
 fn parse_call_exp(mut stream: &mut VecDeque<Token>) -> Result<Option<Expression>, ()> {
     let operator = {
         let operator_res = parse_expression(&mut stream);
@@ -183,6 +195,50 @@ fn parse_call_exp(mut stream: &mut VecDeque<Token>) -> Result<Option<Expression>
         }
     }
 }
+
+// Never returns Ok(None)
+fn parse_lambda(mut stream: &mut VecDeque<Token>) -> Result<Option<Expression>, ()> {
+
+    panic!()
+}
+
+struct Pair {
+    vec: Vec<Expression>,
+    tail: Option<Expression>
+}
+
+// Opening parenthesis is already consumed
+fn parse_cons(mut stream: &mut VecDeque<Token>) -> Result<Pair, ()> {
+    let mut result = Pair {
+        vec: vec![],
+        tail: None
+    };
+
+    loop {
+        let consume_tail = match stream.get(0) {
+            Some(&Token::Dot) if result.tail.is_none() && result.vec.len() > 0 => {
+                stream.pop_front();
+                true
+            },
+            Some(&Token::Close) => {
+                stream.pop_front();
+                return Ok(result);
+            },
+            _ if result.tail.is_some() => return Err(()),
+            _ => false
+        };
+        match (parse_expression(&mut stream), consume_tail) {
+            (Ok(Some(exp)), true) => {
+                result.tail = Some(exp);
+            },
+            (Ok(Some(exp)), false) => {
+                result.vec.push(exp);
+            },
+            _ => return Err(())
+        }
+    }
+}
+
 
 fn is_verbose_quotation(t: Option<&Token>) -> bool {
     t.is_some() && match t.unwrap() {
