@@ -9,9 +9,10 @@ pub enum Datum {
     String(String),
     Symbol(String),
     // If last is present, head is non-empty!!
-    List {
-        head: Vec<Datum>,
-        last: Option<Box<Datum>>
+    List(Vec<Datum>),
+    Pair {
+        car: Vec<Datum>,
+        cdr: Box<Datum>
     },
     Abbreviation {
         kind: AbbreviationKind,
@@ -43,40 +44,42 @@ pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, ()>{
         Token::Identifier(x) => ret_val!(Datum::Symbol(x)),
 
         Token::Open => {
-            let mut head = Vec::new();
+            let mut datums = Vec::new();
             let mut last = None;
-            let mut has_dot = false;
+            let mut is_pair = false;
 
             loop {
 
                 match stream.get(0) {
-                    Some(&Token::Close) if (
-                        (head.len() > 0 || !has_dot) && has_dot == last.is_some()
-                    ) => {
+                    Some(&Token::Close) if !is_pair && last.is_none() => {
                         stream.pop_front();
-                        ret_val!(Datum::List {
-                            head: head,
-                            last: last
+                        ret_val!(Datum::List(datums));
+                    },
+                    Some(&Token::Close) if is_pair && datums.len() > 0 && last.is_some() => {
+                        stream.pop_front();
+                        ret_val!(Datum::Pair {
+                            car: datums,
+                            cdr: last.unwrap()
                         });
                     },
-                    Some(&Token::Dot) if has_dot == false => {
-                        has_dot = true;
+                    Some(&Token::Dot) if is_pair == false => {
+                        is_pair = true;
                         stream.pop_front();
                     },
                     // Close and Dot are errors in any other circumstances
                     // Also interrupted stream or any other token after finishing a pair
                     Some(&Token::Close) | Some(&Token::Dot) | None => return Err(()),
-                    _ if has_dot && last.is_some() => return Err(()),
+                    _ if is_pair && last.is_some() => return Err(()),
 
                     _ => {}
                 }
 
                 match parse_datum(stream) {
                     Ok(Some(d)) => {
-                        if has_dot {
+                        if is_pair {
                             last = Some(Box::new(d));
                         } else {
-                            head.push(d);
+                            datums.push(d);
                         }
                     },
                     _ => return Err(())
@@ -143,10 +146,7 @@ mod test {
     #[test]
     fn list_test() {
         let mut stream = tokens(&[Token::Open, Token::Character('a'), Token::Close]);
-        let expected = Datum::List {
-            head: vec![Datum::Character('a')],
-            last: None
-        };
+        let expected = Datum::List(vec![Datum::Character('a')]);
         assert_eq!(parse_datum(&mut stream), ok_some!(expected));
     }
 
@@ -156,9 +156,9 @@ mod test {
         let mut stream = tokens(&[
             Token::Open, Token::Character('a'), Token::Dot, Token::String(s.clone()), Token::Close
         ]);
-        let expected = Datum::List {
-            head: vec![Datum::Character('a')],
-            last: Some(Box::new(Datum::String(s.clone())))
+        let expected = Datum::Pair {
+            car: vec![Datum::Character('a')],
+            cdr: Box::new(Datum::String(s.clone()))
         };
         assert_eq!(parse_datum(&mut stream), ok_some!(expected));
     }
@@ -212,13 +212,12 @@ mod test {
         ]);
         let expected = Datum::Abbreviation {
             kind: AbbreviationKind::Quasiquote,
-            datum: Box::new(Datum::List {
-                head: vec![
+            datum: Box::new(Datum::List(
+                vec![
                     Datum::Symbol("foo".to_string()),
                     Datum::Symbol("bar".to_string())
-                ],
-                last: None
-            })
+                ]
+            ))
         };
         assert_eq!(parse_datum(&mut stream), ok_some!(expected));
     }

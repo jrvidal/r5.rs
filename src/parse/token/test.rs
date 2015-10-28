@@ -140,15 +140,15 @@ fn identifiers_test() {
         assert_next_identifier(&s[..], &s[0..2])
     }
 
-    #[test]
-    fn comments_test() {
-        assert_next(";foobar\n#t", Token::Boolean(true));
-    }
+}
 
-    #[test]
+#[test]
+fn comments_test() {
+    assert_next(";foobar\n#t", Token::Boolean(true));
+}
 
-    fn comments_whitespace_test() {
-        let mut stream = Chars::from_str("#\\spa;foobar\nce");
-        assert!(next_token(&mut stream).is_err());
-    }
+#[test]
+fn comments_whitespace_test() {
+    let mut stream = Chars::from_str("#\\spa;foobar\nce");
+    assert!(next_token(&mut stream).is_err());
 }
