@@ -1,6 +1,5 @@
-use std::collections::VecDeque;
-use ::parse::token::{Token, NumberToken};
-use super::datum::{Datum, parse_datum};
+use ::parse::token::{NumberToken};
+use super::datum::{Datum, AbbreviationKind};
 use ::parse::keywords;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -68,339 +67,272 @@ fn is_syntactic_keyword(name: &str) -> bool {
     }
 }
 
-pub fn parse_expression(mut stream: &mut VecDeque<Token>) -> Result<Option<Expression>, ()> {
-    if stream.get(0).is_none() {
-        return Ok(None);
-    }
-
-
-    let t = stream.pop_front().unwrap();
-
+pub fn parse_expression(d: Datum) -> Result<Expression, ()> {
     // Simple cases
-    match t {
-        Token::Identifier(s) => {
+    let (head, mut datums) = match d {
+        Datum::Symbol(s) => {
             if is_syntactic_keyword(&s) {
                 return Err(());
             } else {
-                ret_val!(Expression::Variable(s))
+                return Ok(Expression::Variable(s))
             }
         },
         // TO DO: why doesn't this work??
-        // Token::Identifier(s) if is_syntactic_keyword(&s) => {
+        // Datum::Symbol(s) if is_syntactic_keyword(&s) => {
         //         ret_val!(Expression::Variable(s))
         // },
-        Token::Boolean(b) => ret_val!(Expression::Boolean(b)),
-        Token::Character(c) => ret_val!(Expression::Character(c)),
-        Token::String(s) => ret_val!(Expression::String(s)),
-        Token::Number(nt) => ret_val!(Expression::Number(nt)),
-        Token::SingleQuote => {
-            match parse_datum(&mut stream) {
-                Ok(Some(d)) => ret_val!(Expression::Quotation(d)),
-                _ => return Err(())
-            }
-        },
+        Datum::Boolean(b) => return Ok(Expression::Boolean(b)),
+        Datum::Character(c) => return Ok(Expression::Character(c)),
+        Datum::String(s) => return Ok(Expression::String(s)),
+        Datum::Number(nt) => return Ok(Expression::Number(nt)),
 
-        Token::BackQuote => {
+        Datum::Abbreviation {
+            kind: AbbreviationKind::Quote,
+            datum: dat
+        } => return Ok(Expression::Quotation(*dat)),
+
+        Datum::Abbreviation {
+            kind: AbbreviationKind::Quasiquote,
+            ..
+        } => {
             panic!("quasiquotations");
         },
 
-        // Handle verbose quotations '(quote ...)' here
-        Token::Open if is_verbose_quotation(stream.get(0)) => {
-            stream.pop_front();
-            match (parse_datum(&mut stream), consume_close(&mut stream)) {
-                (Ok(Some(d)), true) => ret_val!(Expression::Quotation(d)),
-                _ => return Err(())
+        // Delegate
+        Datum::List(mut datums) => {
+            if datums.len() == 0 {
+                return Err(());
             }
+            let head = datums.remove(0);
+            (head, datums)
         },
-
-        // Delegate to list matcher
-        Token::Open if stream.get(0).is_some() => {},
 
         _ => return Err(())
-    }
-
-    // Last token was '(' and there is a next token for sure.
-
-    // Discard function calls
-    if match stream.get(0).unwrap() {
-        &Token::Identifier(ref s) => {
-            !is_syntactic_keyword(s)
-        },
-        _ => true
-    } {
-        return parse_call_exp(&mut stream);
-    }
-
-    let k = match stream.pop_front() {
-        Some(Token::Identifier(s)) => s,
-        _ => "__error__".to_string()
     };
 
-    match &k[..] {
-        keywords::IF => match (
-            parse_expression(&mut stream),
-            parse_expression(&mut stream),
-            parse_expression(&mut stream),
-            consume_close(&mut stream)
-        ) {
-            (Ok(Some(test)), Ok(Some(cons)), Ok(alt), true) => ret_val!(Expression::Conditional {
-                test: Box::new(test),
-                consequent: Box::new(cons),
-                alternate: alt.map(|e| {Box::new(e)})
-            }),
-            _ => return Err(())
+    // Discard function calls, extract symbol
+    let symbol = match head {
+        Datum::Symbol(s) =>  {
+            if is_syntactic_keyword(&s) {
+                s
+            } else {
+                return parse_call_exp(Datum::Symbol(s), datums);
+            }
         },
-        keywords::SET_BANG => match (
-            parse_expression(&mut stream),
-            parse_expression(&mut stream),
-            consume_close(&mut stream),
-        ) {
-            (Ok(Some(Expression::Variable(s))), Ok(Some(rv)), true) => ret_val!(Expression::Assignment {
-                variable: s,
-                expression: Box::new(rv)
-            }),
-            _ => return Err(())
-        },
-        keywords::LAMBDA => match (
+        _ => return parse_call_exp(head, datums)
+    };
 
-        ) {
-            _ => return Err(())
+    match &symbol[..] {
+        // Verbose quotations
+        keywords::QUOTE => {
+            if datums.len() == 1 {
+                return Ok(Expression::Quotation(datums.pop().unwrap()));
+            } else {
+                return Err(());
+            }
+        },
+        keywords::IF => match consume_expressions(datums, 2, Some(3)) {
+            Ok(mut exprs) => {
+                let test = exprs.remove(0);
+                let consequent = exprs.remove(0);
+                let alternate = if exprs.len() == 1 {
+                    Some(exprs.remove(0))
+                } else {
+                    None
+                };
+                return Ok(Expression::Conditional {
+                    test: Box::new(test),
+                    consequent: Box::new(consequent),
+                    alternate: alternate.map(|alt| {Box::new(alt)})
+                });
+            },
+            Err(()) => return Err(()),
         },
         _ => panic!()
     }
+
+    panic!();
+
+    // // Last token was '(' and there is a next token for sure.
+
+    // match &k[..] {
+    //     keywords::SET_BANG => match (
+    //         parse_expression(&mut stream),
+    //         parse_expression(&mut stream),
+    //         consume_close(&mut stream),
+    //     ) {
+    //         (Ok(Some(Expression::Variable(s))), Ok(Some(rv)), true) => ret_val!(Expression::Assignment {
+    //             variable: s,
+    //             expression: Box::new(rv)
+    //         }),
+    //         _ => return Err(())
+    //     },
+    //     keywords::LAMBDA => match (
+
+    //     ) {
+    //         _ => return Err(())
+    //     },
+    //     _ => panic!()
+    // }
 }
 
-// Never returns Ok(None)
-fn parse_call_exp(mut stream: &mut VecDeque<Token>) -> Result<Option<Expression>, ()> {
-    let operator = {
-        let operator_res = parse_expression(&mut stream);
-        if operator_res.is_err() || operator_res.as_ref().ok().unwrap().is_none() {
-            return Err(());
-        }
-        operator_res.ok().unwrap().unwrap()
-    };
+fn parse_call_exp(operator: Datum, operands: Vec<Datum>) -> Result<Expression, ()> {
+    let parsed_operator = parse_expression(operator);
+    let parsed_operands = consume_expressions(operands, 0, None);
 
-    let mut operands = Vec::new();
-
-    loop {
-        match stream.get(0) {
-            Some(&Token::Close) => return Ok(Some(Expression::Call {
-                operands: operands,
-                operator: Box::new(operator)
-            })),
-            _ => match parse_expression(&mut stream) {
-                Ok(Some(e)) => operands.push(e),
-                _ => return Err(())
+    Ok(match (parsed_operator, parsed_operands) {
+        (Ok(exp), Ok(exps)) => {
+            Expression::Call {
+                operator: Box::new(exp),
+                operands: exps
             }
-        }
-    }
-}
-
-// Never returns Ok(None)
-fn parse_lambda(mut stream: &mut VecDeque<Token>) -> Result<Option<Expression>, ()> {
-
-    panic!()
-}
-
-struct Pair {
-    vec: Vec<Expression>,
-    tail: Option<Expression>
-}
-
-// Opening parenthesis is already consumed
-fn parse_cons(mut stream: &mut VecDeque<Token>) -> Result<Pair, ()> {
-    let mut result = Pair {
-        vec: vec![],
-        tail: None
-    };
-
-    loop {
-        let consume_tail = match stream.get(0) {
-            Some(&Token::Dot) if result.tail.is_none() && result.vec.len() > 0 => {
-                stream.pop_front();
-                true
-            },
-            Some(&Token::Close) => {
-                stream.pop_front();
-                return Ok(result);
-            },
-            _ if result.tail.is_some() => return Err(()),
-            _ => false
-        };
-        match (parse_expression(&mut stream), consume_tail) {
-            (Ok(Some(exp)), true) => {
-                result.tail = Some(exp);
-            },
-            (Ok(Some(exp)), false) => {
-                result.vec.push(exp);
-            },
-            _ => return Err(())
-        }
-    }
-}
-
-
-fn is_verbose_quotation(t: Option<&Token>) -> bool {
-    t.is_some() && match t.unwrap() {
-        &Token::Identifier(ref s) => s == keywords::QUOTE,
-        _ => false
-    }
-}
-
-fn consume_close(stream: &mut VecDeque<Token>) -> bool {
-    match stream.get(0) {
-        Some(&Token::Close) => {
-            stream.pop_front();
-            true
         },
-        _ => false
-    }
+        _ => return Err(())
+    })
 }
+
+fn consume_expressions(datums: Vec<Datum>, min: usize, max: Option<usize>) -> Result<Vec<Expression>, ()> {
+    if datums.len() < min {
+        return Err(())
+    }
+    match max {
+        Some(m) => if min > m {
+            panic!("Wrong call to consume_expressions");
+        } else if datums.len() > m {
+            return Err(())
+        },
+        None => {}
+    }
+
+    let mut result = vec![];
+
+    for datum in datums {
+        match parse_expression(datum) {
+            Ok(exp) => result.push(exp),
+            Err(()) => return Err(())
+        }
+    }
+
+    Ok(result)
+}
+
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::collections::VecDeque;
-    use ::parse::token::{Token};
-    use ::parse::ast::datum::{Datum};
-    use super::super::tokens;
-
-    fn tokens_list(t: &[Token]) -> VecDeque<Token> {
-        let mut stream = tokens(t);
-        stream.push_front(Token::Open);
-        stream.push_back(Token::Close);
-        stream
-    }
+    use ::parse::ast::datum::{Datum, AbbreviationKind};
 
 
     #[test]
     fn parse_self_evaluating_test() {
-        let mut stream = tokens(&[Token::Identifier("foobar".to_string())]);
-        assert_eq!(parse_expression(&mut stream), ok_some!(Expression::Variable("foobar".to_string())));
+        let datum = Datum::Symbol("foobar".to_string());
+        assert_eq!(parse_expression(datum), Ok(Expression::Variable("foobar".to_string())));
 
-        let mut stream = tokens(&[Token::Boolean(true)]);
-        assert_eq!(parse_expression(&mut stream), ok_some!(Expression::Boolean(true)));
+        let datum = Datum::Boolean(true);
+        assert_eq!(parse_expression(datum), Ok(Expression::Boolean(true)));
 
-        let mut stream = tokens(&[Token::Character('a')]);
-        assert_eq!(parse_expression(&mut stream), ok_some!(Expression::Character('a')));
+        let datum = Datum::Character('a');
+        assert_eq!(parse_expression(datum), Ok(Expression::Character('a')));
 
-        let mut stream = tokens(&[Token::String("foobar".to_string())]);
-        assert_eq!(parse_expression(&mut stream), ok_some!(Expression::String("foobar".to_string())));
+        let datum = Datum::String("foobar".to_string());
+        assert_eq!(parse_expression(datum), Ok(Expression::String("foobar".to_string())));
     }
 
     #[test]
     fn parse_reserved_keywords_test() {
-        let mut stream = tokens(&[Token::Identifier("letrec".to_string())]);
-        assert!(parse_expression(&mut stream).is_err());
+        let datum = Datum::Symbol("letrec".to_string());
+        assert!(parse_expression(datum).is_err());
     }
 
     #[test]
     fn parse_simple_datum_test() {
-        let mut stream = tokens(&[Token::SingleQuote, Token::Boolean(true)]);
+        let datum = Datum::Abbreviation {
+            datum: Box::new(Datum::Boolean(true)),
+            kind: AbbreviationKind::Quote
+        };
         let expected = Expression::Quotation(Datum::Boolean(true));
-        assert_eq!(parse_expression(&mut stream), ok_some!(expected));
+        assert_eq!(parse_expression(datum), Ok(expected));
     }
 
     #[test]
     fn parse_list_datum_test() {
-        let mut stream = tokens(&[
-            Token::SingleQuote,
-            Token::Open,
-                Token::Identifier("foobar".to_string()),
-                Token::Dot,
-                Token::Character('a'),
-            Token::Close
-        ]);
-        let expected = Expression::Quotation(Datum::List {
-            head: vec![Datum::Symbol("foobar".to_string())],
-            last: Some(Box::new(Datum::Character('a')))
-        });
-        assert_eq!(parse_expression(&mut stream), ok_some!(expected));
+        let pair = Datum::Pair {
+            car: vec![Datum::Symbol("foobar".to_string())],
+            cdr: Box::new(Datum::Character('a'))
+        };
+        let datum = Datum::Abbreviation {
+            datum: Box::new(pair.clone()),
+            kind: AbbreviationKind::Quote
+        };
+        let expected = Expression::Quotation(pair);
+        assert_eq!(parse_expression(datum), Ok(expected));
     }
 
     #[test]
     fn parse_verbose_datum_test() {
-        let mut stream = tokens_list(&[
-            Token::Identifier("quote".to_string()),
-            Token::OpenVector,
-                Token::Boolean(false),
-            Token::Close,
+        let datum = Datum::List(vec![
+            Datum::Symbol("quote".to_string()),
+            Datum::Vector(vec![
+                Datum::Boolean(false)
+            ])
         ]);
         let expected = Expression::Quotation(Datum::Vector(
             vec![Datum::Boolean(false)],
         ));
-        assert_eq!(parse_expression(&mut stream), ok_some!(expected));
-    }
-
-    #[test]
-    fn parse_datum_handle_error() {
-        let mut stream = tokens(&[
-            Token::SingleQuote, Token::Open, Token::Dot, Token::Close
-        ]);
-        assert!(parse_expression(&mut stream).is_err());
+        assert_eq!(parse_expression(datum), Ok(expected));
     }
 
     #[test]
     fn parse_datum_multiple_error() {
-        let mut stream = tokens_list(&[
-            Token::Identifier("quote".to_string()),
-            Token::OpenVector,
-                Token::Boolean(false),
-            Token::Close,
-            Token::Boolean(true),
+        let datum = Datum::List(vec![
+            Datum::Symbol("quote".to_string()),
+            Datum::Vector(vec![
+                Datum::Boolean(false)
+            ]),
+            Datum::Boolean(true)
         ]);
-        assert!(parse_expression(&mut stream).is_err());
+        assert!(parse_expression(datum).is_err());
     }
 
     #[test]
     fn parse_datum_none_error() {
-        let mut stream = tokens_list(&[
-            Token::Identifier("quote".to_string()),
+        let datum = Datum::List(vec![
+            Datum::Symbol("quote".to_string()),
         ]);
-        assert!(parse_expression(&mut stream).is_err());
-    }
-
-    #[test]
-    fn parse_single_open_error() {
-        let mut stream = tokens(&[
-            Token::Open,
-        ]);
-        assert!(parse_expression(&mut stream).is_err());
+        assert!(parse_expression(datum).is_err());
     }
 
     #[test]
     fn parse_call_expression_test() {
-        let mut stream = tokens_list(&[
-            Token::Identifier("foobar".to_string()),
-            Token::Character('a'),
-            Token::SingleQuote,
-            Token::Open,
-            Token::Close
+        let datum = Datum::List(vec![
+            Datum::Symbol("foobar".to_string()),
+            Datum::Character('a'),
+            Datum::Abbreviation {
+                kind: AbbreviationKind::Quote,
+                datum: Box::new(Datum::List(vec![]))
+            }
         ]);
         let expected = Expression::Call {
             operator: Box::new(Expression::Variable("foobar".to_string())),
             operands: vec![
                 Expression::Character('a'),
-                Expression::Quotation(Datum::List {
-                    head: vec![],
-                    last: None
-                })
+                Expression::Quotation(Datum::List(vec![]))
             ]
         };
-        assert_eq!(parse_expression(&mut stream), ok_some!(expected));
+        assert_eq!(parse_expression(datum), Ok(expected));
     }
 
-    // Temporary
-    #[test]
-    #[should_panic]
-    fn parse_call_expression_delegation_test() {
-        let mut stream = tokens_list(&[
-            Token::Identifier("cond".to_string()),
-            Token::Character('a'),
-            Token::SingleQuote,
-            Token::Open,
-            Token::Close
-        ]);
-        assert!(parse_expression(&mut stream).is_err());
-    }
+    // // Temporary
+    // #[test]
+    // #[should_panic]
+    // fn parse_call_expression_delegation_test() {
+    //     let mut stream = tokens_list(&[
+    //         Token::Identifier("cond".to_string()),
+    //         Token::Character('a'),
+    //         Token::SingleQuote,
+    //         Token::Open,
+    //         Token::Close
+    //     ]);
+    //     assert!(parse_expression(datum).is_err());
+    // }
 }
