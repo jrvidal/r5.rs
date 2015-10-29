@@ -18,11 +18,7 @@ pub enum Expression {
         operands: Vec<Expression>
     },
     Lambda {
-        // If true, formals should contain 1 parameter
-        // and rest should be None
-        varargs: bool,
-        formals: Vec<String>,
-        rest: Option<String>,
+        formals: LambdaFormals,
         // TO DO: Definitions
         commands: Vec<Expression>,
         expression: Box<Expression>,
@@ -44,6 +40,14 @@ pub enum Expression {
     },
     // TO DO: macro block
     MacroBlock,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LambdaFormals {
+    VarArgs(String),
+    List(Vec<String>),
+    // For rest params, vec.len() *must* be >= 1
+    Rest(Vec<String>, String)
 }
 
 macro_rules! one_of {
@@ -93,10 +97,8 @@ pub fn parse_expression(d: Datum) -> Result<Expression, ()> {
 
         Datum::Abbreviation {
             kind: AbbreviationKind::Quasiquote,
-            ..
-        } => {
-            panic!("quasiquotations");
-        },
+            datum,
+        } => return parse_quasiquotation(*datum),
 
         // Delegate
         Datum::List(mut datums) => {
@@ -122,16 +124,13 @@ pub fn parse_expression(d: Datum) -> Result<Expression, ()> {
         _ => return parse_call_exp(head, datums)
     };
 
-    match &symbol[..] {
+    match (&symbol[..], datums.len()) {
         // Verbose quotations
-        keywords::QUOTE => {
-            if datums.len() == 1 {
-                return Ok(Expression::Quotation(datums.pop().unwrap()));
-            } else {
-                return Err(());
-            }
-        },
-        keywords::IF => match consume_expressions(datums, 2, Some(3)) {
+        (keywords::QUOTE, 1) => return Ok(Expression::Quotation(datums.remove(0))),
+        // Verbose quasiquotations
+        (keywords::QUASIQUOTE, 1) => return parse_quasiquotation(datums.remove(0)),
+        // If
+        (keywords::IF, 2) | (keywords::IF, 3) => return Ok(match consume_expressions(datums, 2, Some(3)) {
             Ok(mut exprs) => {
                 let test = exprs.remove(0);
                 let consequent = exprs.remove(0);
@@ -140,40 +139,29 @@ pub fn parse_expression(d: Datum) -> Result<Expression, ()> {
                 } else {
                     None
                 };
-                return Ok(Expression::Conditional {
+                Expression::Conditional {
                     test: Box::new(test),
                     consequent: Box::new(consequent),
                     alternate: alternate.map(|alt| {Box::new(alt)})
-                });
+                }
             },
             Err(()) => return Err(()),
-        },
-        _ => panic!()
+        }),
+        // Assignment
+        (keywords::SET_BANG, 2) => return Ok({
+            let var = datums.remove(0);
+            match (var, consume_expressions(datums, 1, Some(1))) {
+                (Datum::Symbol(s), Ok(mut exprs)) => Expression::Assignment {
+                    variable: s,
+                    expression: Box::new(exprs.remove(0))
+                },
+                _ => return Err(())
+            }
+        }),
+        // Lambda
+        (keywords::LAMBDA, l) if l >= 2 => return parse_lambda_exp(datums),
+        _ => return Err(())
     }
-
-    panic!();
-
-    // // Last token was '(' and there is a next token for sure.
-
-    // match &k[..] {
-    //     keywords::SET_BANG => match (
-    //         parse_expression(&mut stream),
-    //         parse_expression(&mut stream),
-    //         consume_close(&mut stream),
-    //     ) {
-    //         (Ok(Some(Expression::Variable(s))), Ok(Some(rv)), true) => ret_val!(Expression::Assignment {
-    //             variable: s,
-    //             expression: Box::new(rv)
-    //         }),
-    //         _ => return Err(())
-    //     },
-    //     keywords::LAMBDA => match (
-
-    //     ) {
-    //         _ => return Err(())
-    //     },
-    //     _ => panic!()
-    // }
 }
 
 fn parse_call_exp(operator: Datum, operands: Vec<Datum>) -> Result<Expression, ()> {
@@ -189,6 +177,42 @@ fn parse_call_exp(operator: Datum, operands: Vec<Datum>) -> Result<Expression, (
         },
         _ => return Err(())
     })
+}
+
+macro_rules! ask_for_vars {
+    ($x:expr) => ({
+        let mut v = vec![];
+        let l = $x.len();
+        for d in $x.into_iter() {
+            match d {
+                Datum::Symbol(s) => v.push(s),
+                _ => break
+            }
+        }
+        if v.len() == l {
+            Ok(v)
+        } else {
+            Err(())
+        }
+    })
+}
+
+fn parse_lambda_exp(mut datums: Vec<Datum>) -> Result<Expression, ()> {
+    let formals = match datums.remove(0) {
+        Datum::Symbol(s) => LambdaFormals::VarArgs(s),
+        Datum::Pair {
+            car, cdr
+        } => match (ask_for_vars!(car), *cdr) {
+            (Ok(vars), Datum::Symbol(s)) => LambdaFormals::Rest(vars, s),
+            _ => return Err(())
+        },
+        Datum::List(dats) => match ask_for_vars!(dats) {
+            Ok(vars) => LambdaFormals::List(vars),
+            _ => return Err(())
+        },
+        _ => return Err(())
+    };
+    panic!("");
 }
 
 fn consume_expressions(datums: Vec<Datum>, min: usize, max: Option<usize>) -> Result<Vec<Expression>, ()> {
@@ -214,6 +238,12 @@ fn consume_expressions(datums: Vec<Datum>, min: usize, max: Option<usize>) -> Re
     }
 
     Ok(result)
+}
+
+// TO DO: does this method really take 1 datum? The grammar suggests so.
+fn parse_quasiquotation(datum: Datum) -> Result<Expression, ()> {
+    println!("{:?}", datum);
+    unimplemented!();
 }
 
 
