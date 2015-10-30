@@ -1,5 +1,8 @@
 use std::collections::VecDeque;
 use ::parse::token::{Token, NumberToken};
+use ::parse::keywords;
+
+// TO DO: test keywords symbols
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Datum {
@@ -7,7 +10,8 @@ pub enum Datum {
     Number(NumberToken),
     Character(char),
     String(String),
-    Symbol(String),
+    // true if it's a keyword
+    Symbol(String, bool),
     // If last is present, head is non-empty!!
     List(Vec<Datum>),
     Pair {
@@ -41,7 +45,7 @@ pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, ()>{
         Token::Number(n) => ret_val!(Datum::Number(n)),
         Token::Character(c) => ret_val!(Datum::Character(c)),
         Token::String(s) => ret_val!(Datum::String(s)),
-        Token::Identifier(x) => ret_val!(Datum::Symbol(x)),
+        Token::Identifier(x) => ret_val!(symbol_for(x)),
 
         Token::Open => {
             let mut datums = Vec::new();
@@ -131,6 +135,11 @@ pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, ()>{
     }
 }
 
+pub fn symbol_for(s: String) -> Datum {
+    let keyword = keywords::is_syntactic_keyword(&s);
+    Datum::Symbol(s, keyword)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -214,8 +223,8 @@ mod test {
             kind: AbbreviationKind::Quasiquote,
             datum: Box::new(Datum::List(
                 vec![
-                    Datum::Symbol("foo".to_string()),
-                    Datum::Symbol("bar".to_string())
+                    Datum::Symbol("foo".to_string(), false),
+                    Datum::Symbol("bar".to_string(), false)
                 ]
             ))
         };

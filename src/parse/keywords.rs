@@ -19,6 +19,26 @@ pub const UNQUOTE : &'static str = "unquote";
 pub const QUASIQUOTE : &'static str = "quasiquote";
 pub const UNQUOTE_SPLICING : &'static str = "unquote-splicing";
 
+macro_rules! one_of {
+    ($x:expr, [$c:expr]) => ($x == $c);
+    ($x:expr, [ $c:expr, $( $d:expr ),* ]) => (
+        $x == $c || one_of!($x, [$( $d ),* ])
+    )
+}
+
+pub fn is_syntactic_keyword(name: &str) -> bool {
+    match name.len() {
+        2 => one_of!(name, [IF, OR, ARROW, DO]),
+        3 => one_of!(name, [AND, LET]),
+        4 => one_of!(name, [ELSE, SET_BANG, COND, CASE, LET_STAR]),
+        5 => one_of!(name, [QUOTE, BEGIN, DELAY]),
+        6 => one_of!(name, [DEFINE, LAMBDA, LETREC]),
+        7 => one_of!(name, [UNQUOTE]),
+        10 => one_of!(name, [QUASIQUOTE]),
+        16 => one_of!(name, [UNQUOTE_SPLICING]),
+        _ => false
+    }
+}
 // pub enum Keyword {
 //     If,
 //     Or,
