@@ -39,42 +39,5 @@ pub fn is_syntactic_keyword(name: &str) -> bool {
         _ => false
     }
 }
-// pub enum Keyword {
-//     If,
-//     Or,
-//     Arrow,
-//     Do,
-//     And,
-//     Let,
-//     Else,
-//     SetBang,
-//     Cond,
-//     Case,
-//     Letstar,
-//     Quote,
-//     Begin,
-//     Delay,
-//     Define,
-//     Lambda,
-//     LetRec,
-//     Unquote,
-//     Quasiquote,
-//     UnquoteSplicing,
-// }
 
-// impl From<&str> for Option<Keyword> {
-//     fn from(s: &str) -> Keyword {
-//         match s.len() {
-//             2 => one_of!(name, [IF, OR, ARROW, DO]),
-//             3 => one_of!(name, [AND, LET]),
-//             4 => one_of!(name, [ELSE, SET_BANG, COND, CASE, LET_STAR]),
-//             5 => one_of!(name, [QUOTE, BEGIN, DELAY]),
-//             6 => one_of!(name, [DEFINE, LAMBDA, LETREC]),
-//             7 => one_of!(name, [UNQUOTE]),
-//             10 => one_of!(name, [QUASIQUOTE]),
-//             16 => one_of!(name, [UNQUOTE_SPLICING]),
-//             _ => false
-//         }
-//     }
-// }
 
