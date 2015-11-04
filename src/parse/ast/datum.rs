@@ -2,27 +2,25 @@ use std::collections::VecDeque;
 use ::parse::token::{Token, NumberToken};
 use ::parse::keywords;
 
-// TO DO: test keywords symbols
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Datum {
     Boolean(bool),
+    // We should parse the number token at this time
     Number(NumberToken),
     Character(char),
     String(String),
-    // true if it's a keyword
-    Symbol(String, bool),
-    // If last is present, head is non-empty!!
-    List(Vec<Datum>),
+    Symbol(String),
+    List(VecDeque<Datum>),
+    // car is non-empty!
     Pair {
-        car: Vec<Datum>,
+        car: VecDeque<Datum>,
         cdr: Box<Datum>
     },
     Abbreviation {
         kind: AbbreviationKind,
         datum: Box<Datum>
     },
-    Vector(Vec<Datum>)
+    Vector(VecDeque<Datum>)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -45,10 +43,10 @@ pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, ()>{
         Token::Number(n) => ret_val!(Datum::Number(n)),
         Token::Character(c) => ret_val!(Datum::Character(c)),
         Token::String(s) => ret_val!(Datum::String(s)),
-        Token::Identifier(x) => ret_val!(symbol_for(x)),
+        Token::Identifier(x) => ret_val!(Datum::Symbol(x)),
 
         Token::Open => {
-            let mut datums = Vec::new();
+            let mut datums = VecDeque::new();
             let mut last = None;
             let mut is_pair = false;
 
@@ -83,7 +81,7 @@ pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, ()>{
                         if is_pair {
                             last = Some(Box::new(d));
                         } else {
-                            datums.push(d);
+                            datums.push_back(d);
                         }
                     },
                     _ => return Err(())
@@ -112,7 +110,7 @@ pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, ()>{
             }
         },
         Token::OpenVector => {
-            let mut datums = Vec::new();
+            let mut datums = VecDeque::new();
 
             loop {
 
@@ -126,7 +124,7 @@ pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, ()>{
                 }
 
                 match parse_datum(stream) {
-                    Ok(Some(d)) => datums.push(d),
+                    Ok(Some(d)) => datums.push_back(d),
                     _ => return Err(()),
                 }
             }
@@ -135,13 +133,10 @@ pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, ()>{
     }
 }
 
-pub fn symbol_for(s: String) -> Datum {
-    let keyword = keywords::is_syntactic_keyword(&s);
-    Datum::Symbol(s, keyword)
-}
-
 #[cfg(test)]
 mod test {
+    use std::collections::VecDeque;
+    use std::iter::FromIterator;
     use super::*;
     use ::parse::token::{Token};
     use super::super::tokens;
@@ -155,7 +150,7 @@ mod test {
     #[test]
     fn list_test() {
         let mut stream = tokens(&[Token::Open, Token::Character('a'), Token::Close]);
-        let expected = Datum::List(vec![Datum::Character('a')]);
+        let expected = Datum::List(vec_deque![Datum::Character('a')]);
         assert_eq!(parse_datum(&mut stream), ok_some!(expected));
     }
 
@@ -166,7 +161,7 @@ mod test {
             Token::Open, Token::Character('a'), Token::Dot, Token::String(s.clone()), Token::Close
         ]);
         let expected = Datum::Pair {
-            car: vec![Datum::Character('a')],
+            car: vec_deque![Datum::Character('a')],
             cdr: Box::new(Datum::String(s.clone()))
         };
         assert_eq!(parse_datum(&mut stream), ok_some!(expected));
@@ -207,7 +202,7 @@ mod test {
     fn vector_test() {
         let mut stream = tokens(&[Token::OpenVector, Token::Boolean(true), Token::Close]);
 
-        assert_eq!(parse_datum(&mut stream), ok_some!(Datum::Vector(vec![Datum::Boolean(true)])));
+        assert_eq!(parse_datum(&mut stream), ok_some!(Datum::Vector(vec_deque![Datum::Boolean(true)])));
     }
 
     #[test]
@@ -222,9 +217,9 @@ mod test {
         let expected = Datum::Abbreviation {
             kind: AbbreviationKind::Quasiquote,
             datum: Box::new(Datum::List(
-                vec![
-                    Datum::Symbol("foo".to_string(), false),
-                    Datum::Symbol("bar".to_string(), false)
+                vec_deque![
+                    Datum::Symbol("foo".to_string()),
+                    Datum::Symbol("bar".to_string())
                 ]
             ))
         };
