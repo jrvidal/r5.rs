@@ -1,6 +1,5 @@
 use std::collections::VecDeque;
 use ::parse::token::{Token, NumberToken};
-use ::parse::keywords;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Datum {
@@ -130,6 +129,15 @@ pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, ()>{
             }
         },
         _ => return Err(())
+    }
+}
+
+impl Datum {
+    pub fn list(self) -> Option<VecDeque<Datum>> {
+        match self {
+            Datum::List(l) => Some(l),
+            _ => None
+        }
     }
 }
 
