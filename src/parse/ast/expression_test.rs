@@ -1,5 +1,8 @@
 use super::*;
-use super::{parse_lambda_formals_exp, parse_definition, parse_body};
+use super::{
+    parse_lambda_formals_exp, parse_definition, parse_body, parse_let_exp,
+    parse_else_clause, parse_cond_clause_exp, parse_case_clause_exp
+};
 use std::collections::VecDeque;
 use std::iter::FromIterator;
 use ::parse::ast::datum::{Datum, AbbreviationKind};
@@ -458,4 +461,403 @@ fn boolean_expressions() {
         Expression::Variable("x".to_string()),
     ]));
     assert_parsed!(datum, expected);
+}
+
+#[test]
+fn let_exp() {
+    let datums = vec_deque![
+        list!([
+            list!([
+                symbol!("x"),
+                Datum::Character('a')
+            ]),
+        ]),
+        symbol!("y")
+    ];
+    let expected = (
+        vec![
+            Binding {
+                variable: "x".to_string(),
+                init: Box::new(Expression::Character('a'))
+            }
+        ],
+        Body {
+            commands: vec![],
+            definitions: vec![],
+            expression: Box::new(Expression::Variable("y".to_string()))
+        }
+    );
+    assert_eq!(parse_let_exp(datums), Ok(expected));
+}
+
+#[test]
+fn let_exp_no_bindings_list_error() {
+    let datums = vec_deque![
+        symbol!("x"),
+        symbol!("y")
+    ];
+    assert!(parse_let_exp(datums).is_err());
+}
+
+#[test]
+fn let_exp_no_body_error() {
+    let datums = vec_deque![
+        list!([
+            list!([symbol!("x"), symbol!("y")])
+        ]),
+    ];
+    assert!(parse_let_exp(datums).is_err());
+}
+
+#[test]
+#[should_panic]
+fn let_exp_no_details_error() {
+    let datums = vec_deque![];
+    assert!(parse_let_exp(datums).is_err());
+}
+
+#[test]
+fn let_exp_invalid_binding_list_error() {
+    let datums = vec_deque![
+        list!([
+            symbol!("y"),
+            list!([
+                Datum::Boolean(true),
+                Datum::Character('a')
+            ])
+        ]),
+        symbol!("x")
+    ];
+    assert!(parse_let_exp(datums).is_err());
+}
+
+#[test]
+fn let_exp_invalid_binding_length_error() {
+    let datums = vec_deque![
+        list!([
+            list!([
+                symbol!("x")
+            ])
+        ]),
+        symbol!("x")
+    ];
+    assert!(parse_let_exp(datums).is_err());
+
+    let datums = vec_deque![
+        list!([
+            list!([
+                symbol!("x"),
+                Datum::Boolean(true),
+                Datum::Character('a'),
+            ])
+        ]),
+        symbol!("x")
+    ];
+    assert!(parse_let_exp(datums).is_err());
+}
+
+#[test]
+fn let_exp_invalid_variable_binding_error() {
+    let datums = vec_deque![
+        list!([
+            list!([
+                Datum::Boolean(true),
+                Datum::Character('a')
+            ])
+        ]),
+        symbol!("x")
+    ];
+    assert!(parse_let_exp(datums).is_err());
+}
+
+#[test]
+fn let_exp_invalid_expression_binding_error() {
+    let datums = vec_deque![
+        list!([
+            list!([
+                Datum::Boolean(true),
+                symbol!("if")
+            ])
+        ]),
+        symbol!("x")
+    ];
+    assert!(parse_let_exp(datums).is_err());
+}
+
+#[test]
+fn let_star() {
+    let datum = list!("let*", [
+        list!([
+            list!([symbol!("x"), Datum::Boolean(true)])
+        ]),
+        symbol!("x")
+    ]);
+    let expected = Expression::Derived(Derived::LetStar {
+        bindings: vec![
+            Binding {
+                variable: "x".to_string(),
+                init: Box::new(Expression::Boolean(true))
+            }
+        ],
+        body: Body {
+            commands: vec![],
+            definitions: vec![],
+            expression: Box::new(Expression::Variable("x".to_string()))
+        }
+    });
+    assert_parsed!(datum, expected);
+}
+
+#[test]
+fn named_let() {
+    let datum = list!("let", [
+        symbol!("f"),
+        list!([
+            list!([symbol!("x"), Datum::Boolean(true)])
+        ]),
+        symbol!("x")
+    ]);
+    let expected = Expression::Derived(Derived::NamedLet {
+        variable: "f".to_string(),
+        bindings: vec![
+            Binding {
+                variable: "x".to_string(),
+                init: Box::new(Expression::Boolean(true))
+            }
+        ],
+        body: Body {
+            commands: vec![],
+            definitions: vec![],
+            expression: Box::new(Expression::Variable("x".to_string()))
+        }
+    });
+    assert_parsed!(datum, expected);
+}
+
+#[test]
+fn else_clause() {
+    let mut datums = vec_deque![
+        symbol!("x"),
+        list!("else", [
+            symbol!("y")
+        ])
+    ];
+    let expected = (vec![], Box::new(Expression::Variable("y".to_string())));
+    assert_eq!(parse_else_clause(&mut datums), Ok(Some(expected)));
+}
+
+#[test]
+fn long_else_clause() {
+    let mut datums = vec_deque![
+        list!("else", [
+            symbol!("y"),
+            Datum::Boolean(true)
+        ])
+    ];
+    let expected = (
+        vec![Expression::Variable("y".to_string())],
+        Box::new(Expression::Boolean(true))
+    );
+    assert_eq!(parse_else_clause(&mut datums), Ok(Some(expected)));
+}
+
+#[test]
+fn no_else_clause() {
+    let mut datums = vec_deque![
+        symbol!("x"),
+    ];
+    let clone = datums.clone();
+    assert_eq!(parse_else_clause(&mut datums), Ok(None));
+    assert_eq!(datums, clone);
+
+    let mut datums = vec_deque![
+        list!("foobar", [symbol!["x"]])
+    ];
+    let clone = datums.clone();
+    assert_eq!(parse_else_clause(&mut datums), Ok(None));
+    assert_eq!(datums, clone);
+}
+
+#[test]
+fn empty_else_clause_error() {
+    let mut datums = vec_deque![
+        list!("else", [])
+    ];
+    assert!(parse_else_clause(&mut datums).is_err());
+}
+
+#[test]
+fn bad_expression_else_clause_error() {
+    let mut datums = vec_deque![
+        symbol!("x"),
+        list!("else", [
+            list!("if", [])
+        ])
+    ];
+    assert!(parse_else_clause(&mut datums).is_err());
+}
+
+#[test]
+fn cond_clause() {
+    let datum = list!([
+        symbol!("x"),
+        symbol!("y"),
+        Datum::Boolean(true)
+    ]);
+    let expected = CondClause::Normal {
+        test: Box::new(Expression::Variable("x".to_string())),
+        expressions: vec![
+            Expression::Variable("y".to_string()), Expression::Boolean(true)
+        ]
+    };
+    assert_eq!(parse_cond_clause_exp(datum), Ok(expected));
+}
+
+#[test]
+fn expressionless_cond_clause() {
+    let datum = list!([
+        symbol!("x"),
+        symbol!("=>"),
+        symbol!("y"),
+    ]);
+    let expected = CondClause::Arrow {
+        test: Box::new(Expression::Variable("x".to_string())),
+        recipient: Box::new(Expression::Variable("y".to_string()))
+    };
+    assert_eq!(parse_cond_clause_exp(datum), Ok(expected));
+}
+
+#[test]
+fn arrow_cond_clause() {
+    let datum = list!([
+        symbol!("x"),
+    ]);
+    let expected = CondClause::Normal {
+        test: Box::new(Expression::Variable("x".to_string())),
+        expressions: vec![]
+    };
+    assert_eq!(parse_cond_clause_exp(datum), Ok(expected));
+}
+
+#[test]
+fn empty_cond_clause_error() {
+    let datum = list!([]);
+    assert!(parse_cond_clause_exp(datum).is_err());
+}
+
+#[test]
+fn no_list_clause_error() {
+    let datum = Datum::Boolean(true);
+    assert!(parse_cond_clause_exp(datum).is_err());
+}
+
+#[test]
+fn too_many_args_arrow_clause_error() {
+    let datum = list!([
+        symbol!("x"),
+        symbol!("=>"),
+        symbol!("y"),
+        Datum::String("foobar".to_string())
+    ]);
+    assert!(parse_cond_clause_exp(datum).is_err());
+}
+
+#[test]
+fn case_clause() {
+    let datum = list!([
+        list!([
+            symbol!("a"),
+            Datum::Vector(vec_deque![])
+        ]),
+        symbol!("y")
+    ]);
+    let expected = CaseClause {
+        datums: vec_deque![
+            symbol!("a"),
+            Datum::Vector(vec_deque![])
+        ],
+        commands: vec![],
+        expression: Box::new(Expression::Variable("y".to_string()))
+    };
+    assert_eq!(parse_case_clause_exp(datum), Ok(expected));
+}
+
+#[test]
+fn case_clause_no_list_error() {
+    let datum = symbol!("a");
+    assert!(parse_case_clause_exp(datum).is_err());
+}
+
+#[test]
+fn case_clause_short_list_error() {
+    let datum = list!([
+        list!([])
+    ]);
+    assert!(parse_case_clause_exp(datum).is_err());
+}
+
+#[test]
+fn case_clause_no_datum_list_error() {
+    let datum = list!([
+        Datum::Boolean(true),
+        symbol!("y")
+    ]);
+    assert!(parse_case_clause_exp(datum).is_err());
+}
+
+#[test]
+fn cond() {
+    let datum = list!("cond", [
+        list!([
+            symbol!("a"),
+            symbol!("=>"),
+            Datum::String("foo".to_string())
+        ]),
+    ]);
+    let expected = Expression::Derived(Derived::Cond {
+        head_clause: CondClause::Arrow {
+            test: Box::new(Expression::Variable("a".to_string())),
+            recipient: Box::new(Expression::String("foo".to_string()))
+        },
+        tail_clauses: vec![]
+    });
+    assert_parsed!(datum, expected);
+}
+
+#[test]
+fn empty_cond_error() {
+    let datum = list!("cond", []);
+    assert_parse_err!(datum);
+}
+
+#[test]
+fn invalid_case_error() {
+    let datum = list!("case", []);
+    assert_parse_err!(datum);
+
+    let datum = list!("case", [symbol!("x")]);
+    assert_parse_err!(datum);
+}
+
+#[test]
+fn delay() {
+    let datum = list!("delay", [
+        symbol!("x")
+    ]);
+    let expected = Expression::Derived(Derived::Delay(Box::new(Expression::Variable("x".to_string()))));
+    assert_parsed!(datum, expected);
+}
+
+#[test]
+fn empty_delay_error() {
+    let datum = list!("delay", []);
+    assert_parse_err!(datum);
+}
+
+#[test]
+fn too_many_args_delay_error() {
+    let datum = list!("delay", [
+        symbol!("x"), symbol!("y")
+    ]);
+    assert_parse_err!(datum);
 }
