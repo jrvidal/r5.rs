@@ -108,7 +108,7 @@ pub enum Derived {
 pub struct IterationSpec {
     variable: String,
     init: Box<Expression>,
-    step: Box<Option<Expression>>
+    step: Option<Box<Expression>>
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -324,7 +324,30 @@ pub fn parse_expression(d: Datum) -> Result<Expression, ()> {
                 body: details.1
             }
         }).map(Expression::Derived),
-        // TO DO: Do
+        (keywords::DO, l) if l >= 2 => {
+            let specs = try![ datums
+                .pop_front().unwrap()
+                .list().ok_or(())
+                .and_then(|dats| dats.into_iter().map(parse_iteration_spec).collect())
+            ];
+
+            let mut list = try![datums.pop_front().unwrap().list().ok_or(())];
+            try![ (list.len() > 0).result() ];
+            let test = list.pop_front().map(parse_expression).unwrap().map(Box::new);
+            let do_result = list.into_expressions();
+
+            let commands = datums.into_expressions();
+
+            (test, do_result, commands).result().map(|(test_exp, do_res_exp, comms)| {
+                Expression::Derived(Derived::Do {
+                    iterations: specs,
+                    test: test_exp,
+                    result: do_res_exp,
+                    commands: comms
+                })
+            })
+
+        },
         (keywords::AND, _) =>  datums.into_expressions()
                                 .map(Derived::And)
                                 .map(Expression::Derived),
@@ -560,6 +583,25 @@ fn parse_variable(datum: Datum) -> Result<String, ()> {
             Ok(s)
         } else {
             Err(())
+        }
+    })
+}
+
+fn parse_iteration_spec(datum: Datum) -> Result<IterationSpec, ()> {
+    let mut list = try![ datum.list().ok_or(()) ];
+    try![ (list.len() == 2 || list.len() == 3).result() ];
+
+    let variable = list.pop_front().map(parse_variable).unwrap();
+    let init = list.pop_front().map(parse_expression).unwrap().map(Box::new);
+    let step = list.pop_front().map_or(Ok(None), |dat| {
+        parse_expression(dat).map(Box::new).map(Some)
+    });
+
+    (variable, init, step).result().map(|(var, init_exp, step_exp)| {
+        IterationSpec {
+            variable: var,
+            init: init_exp,
+            step: step_exp
         }
     })
 }
