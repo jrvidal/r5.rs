@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 use ::parse::token::{Token, NumberToken};
+use ::helpers::*;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Datum {
@@ -38,11 +39,11 @@ pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, ()>{
     let t = x.unwrap();
 
     match t {
-        Token::Boolean(b) => ret_val!(Datum::Boolean(b)),
-        Token::Number(n) => ret_val!(Datum::Number(n)),
-        Token::Character(c) => ret_val!(Datum::Character(c)),
-        Token::String(s) => ret_val!(Datum::String(s)),
-        Token::Identifier(x) => ret_val!(Datum::Symbol(x)),
+        Token::Boolean(b) => ok_some!(Datum::Boolean(b)),
+        Token::Number(n) => ok_some!(Datum::Number(n)),
+        Token::Character(c) => ok_some!(Datum::Character(c)),
+        Token::String(s) => ok_some!(Datum::String(s)),
+        Token::Identifier(x) => ok_some!(Datum::Symbol(x)),
 
         Token::Open => {
             let mut datums = VecDeque::new();
@@ -51,40 +52,40 @@ pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, ()>{
 
             loop {
 
-                match stream.get(0) {
-                    Some(&Token::Close) if !is_pair && last.is_none() => {
+                match try![ stream.get(0).ok_or(()) ] {
+                    &Token::Close if !is_pair && last.is_none() => {
                         stream.pop_front();
                         ret_val!(Datum::List(datums));
                     },
-                    Some(&Token::Close) if is_pair && datums.len() > 0 && last.is_some() => {
+                    &Token::Close if is_pair && datums.len() > 0 && last.is_some() => {
                         stream.pop_front();
                         ret_val!(Datum::Pair {
                             car: datums,
                             cdr: last.unwrap()
                         });
                     },
-                    Some(&Token::Dot) if is_pair == false => {
+                    &Token::Dot if is_pair == false => {
                         is_pair = true;
                         stream.pop_front();
                     },
                     // Close and Dot are errors in any other circumstances
                     // Also interrupted stream or any other token after finishing a pair
-                    Some(&Token::Close) | Some(&Token::Dot) | None => return Err(()),
-                    _ if is_pair && last.is_some() => return Err(()),
-
-                    _ => {}
+                    &Token::Close | &Token::Dot => return Err(()),
+                    _ => {
+                        try![ ( !(last.is_some() && is_pair) ).result() ];
+                    }
                 }
 
-                match parse_datum(stream) {
-                    Ok(Some(d)) => {
+                try![parse_datum(stream)
+                    .and_then(|d| d.ok_or(()))
+                    .map(|d| {
                         if is_pair {
                             last = Some(Box::new(d));
                         } else {
                             datums.push_back(d);
                         }
-                    },
-                    _ => return Err(())
-                }
+                    })
+                ];
             }
         },
         Token::Comma | Token::CommaAt | Token::SingleQuote | Token::BackQuote => {
@@ -100,35 +101,31 @@ pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, ()>{
                 _ => panic!()
             };
 
-            match parse_datum(stream) {
-                Ok(Some(d)) => ret_val!(Datum::Abbreviation {
+            parse_datum(stream).and_then(|d| d.ok_or(())).map(|d| {
+                Datum::Abbreviation {
                     datum: Box::new(d),
                     kind: abbr
-                }),
-                _ => return Err(())
-            }
+                }
+            }).map(Some)
         },
         Token::OpenVector => {
             let mut datums = VecDeque::new();
 
             loop {
 
-                match stream.get(0) {
-                    None => return Err(()),
-                    Some(&Token::Close) => {
-                        stream.pop_front();
-                        ret_val!(Datum::Vector(datums));
-                    },
-                    _ => {}
+                if try![ stream.get(0).ok_or(()) ] == &Token::Close {
+                    stream.pop_front();
+                    break;
                 }
 
-                match parse_datum(stream) {
-                    Ok(Some(d)) => datums.push_back(d),
-                    _ => return Err(()),
-                }
+                datums.push_back(try![
+                    parse_datum(stream).and_then(|d| d.ok_or(()))
+                ]);
             }
+
+            ok_some!(Datum::Vector(datums))
         },
-        _ => return Err(())
+        _ => Err(())
     }
 }
 

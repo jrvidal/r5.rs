@@ -1,7 +1,7 @@
 use super::*;
 use super::{
     parse_lambda_formals_exp, parse_definition, parse_body, parse_let_exp,
-    parse_else_clause, parse_cond_clause_exp, parse_case_clause_exp
+    parse_else_clause, parse_cond_clause_exp, parse_case_clause_exp, parse_iteration_spec
 };
 use std::collections::VecDeque;
 use std::iter::FromIterator;
@@ -632,6 +632,67 @@ fn named_let() {
         }
     });
     assert_parsed!(datum, expected);
+}
+
+#[test]
+fn iteration_spec() {
+    let datum = list!([
+        symbol!("x"),
+        Datum::Boolean(true)
+    ]);
+    let expected = IterationSpec {
+        variable: "x".to_string(),
+        init: Box::new(Expression::Boolean(true)),
+        step: None
+    };
+    assert_eq!(parse_iteration_spec(datum), Ok(expected));
+}
+
+#[test]
+fn iteration_spec_with_step() {
+    let datum = list!([
+        symbol!("x"),
+        Datum::Boolean(true),
+        Datum::String("dsf".to_string())
+    ]);
+    let expected = IterationSpec {
+        variable: "x".to_string(),
+        init: Box::new(Expression::Boolean(true)),
+        step: Some(Box::new(Expression::String("dsf".to_string())))
+    };
+    assert_eq!(parse_iteration_spec(datum), Ok(expected));
+}
+
+#[test]
+fn wrong_length_iteration_spec_error() {
+    let datum = list!([]);
+    assert!(parse_iteration_spec(datum).is_err());
+
+    let datum = list!([symbol!("x")]);
+    assert!(parse_iteration_spec(datum).is_err());
+
+    let datum = list!([
+        symbol!("x"),
+        Datum::Boolean(true),
+        Datum::String("dsf".to_string()),
+        symbol!("y")
+    ]);
+    assert!(parse_iteration_spec(datum).is_err());
+}
+
+#[test]
+fn no_variable_iteration_spec_error() {
+    let datum = list!([
+        Datum::Boolean(true),
+        Datum::String("dsf".to_string())
+    ]);
+    assert!(parse_iteration_spec(datum).is_err());
+}
+
+#[test]
+fn no_list_iteration_spec_error() {
+    let datum = symbol!("x");
+    assert!(parse_iteration_spec(datum).is_err());
 }
 
 #[test]
