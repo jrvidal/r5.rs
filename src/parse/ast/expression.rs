@@ -22,6 +22,7 @@ pub enum Expression {
     // TO DO: are we going to store the real number or this?
     Number(NumberToken),
     Quotation(Datum),
+    QuasiQuotation(Datum),
 
     Call {
         operator: Box<Expression>,
@@ -205,9 +206,9 @@ pub fn parse_expression(d: Datum) -> Result<Expression, ()> {
 
     match (&symbol[..], datums.len()) {
         // Verbose quotations
-        (keywords::QUOTE, 1) => Ok(Expression::Quotation(datums.pop_front().unwrap())),
+        (keywords::QUOTE, 1) => Ok(datums.pop_front().map(Expression::Quotation).unwrap()),
         // Verbose quasiquotations
-        (keywords::QUASIQUOTE, 1) => return parse_quasiquotation(datums.pop_front().unwrap()),
+        (keywords::QUASIQUOTE, 1) => Ok(datums.pop_front().map(Expression::QuasiQuotation).unwrap()),
         // If
         (keywords::IF, 2) | (keywords::IF, 3) => datums.into_expressions().map(|mut exprs| {
             let (test, consequent, alternate) = {
@@ -372,6 +373,10 @@ pub fn parse_expression(d: Datum) -> Result<Expression, ()> {
     }
 }
 
+
+//
+// Subexpressions
+//
 fn parse_else_clause(datums: &mut VecDeque<Datum>) -> Result<Option<(Vec<Expression>, Box<Expression>)>, ()> {
     let mut else_clause = match datums.back().cloned() {
         Some(Datum::List(l)) => if l.len() > 0 { l } else { return Ok(None); },
@@ -613,7 +618,9 @@ fn parse_quasiquotation(datum: Datum) -> Result<Expression, ()> {
 }
 
 
+//
 // Helpers
+//
 enum Symbol {
     Variable,
     Keyword,
