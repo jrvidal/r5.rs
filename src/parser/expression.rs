@@ -1,10 +1,10 @@
 use std::collections::VecDeque;
 // use std::iter::IntoIterator;
 
-use ::parse::token::{NumberToken};
-use super::datum::{Datum, AbbreviationKind};
-use ::parse::keywords;
-use ::parse::keywords::is_syntactic_keyword;
+use ::lexer::{NumberToken};
+use ::reader::{Datum, AbbreviationKind};
+use ::parser::keywords;
+use ::parser::keywords::is_syntactic_keyword;
 use ::helpers::*;
 
 #[cfg(test)]

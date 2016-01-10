@@ -1,4 +1,4 @@
-use super::Chars;
+use super::chars::Chars;
 
 #[cfg(test)]
 mod test;

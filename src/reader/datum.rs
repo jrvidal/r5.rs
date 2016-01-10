@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use ::parse::token::{Token, NumberToken};
+use ::lexer::{Token, NumberToken};
 use ::helpers::*;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -143,8 +143,15 @@ mod test {
     use std::collections::VecDeque;
     use std::iter::FromIterator;
     use super::*;
-    use ::parse::token::{Token};
-    use super::super::tokens;
+    use ::lexer::{Token};
+
+    pub fn tokens(t: &[Token]) -> VecDeque<Token> {
+        let mut stream = VecDeque::new();
+        for token in t.iter().cloned() {
+            stream.push_back(token);
+        }
+        stream
+    }
 
     #[test]
     fn boolean_datum_test() {

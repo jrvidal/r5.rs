@@ -1,4 +1,5 @@
 use std::ascii::AsciiExt;
+use super::chars::Chars;
 
 /**
     Tokenizer
@@ -16,37 +17,7 @@ use std::ascii::AsciiExt;
     delimiter.
 */
 
-macro_rules! ret_err {
-    ($err:ident) => ({
-        return Err(TokenizerError {error: TokenErrorClass::$err})
-    })
-}
-
-macro_rules! is_whitespace {
-    ($x:expr) => ($x == ' ' || $x == '\n')
-}
-
-macro_rules! is_delimiter {
-    ($x:expr) => (
-        $x.is_none() || {
-            let y = $x.unwrap();
-            y == '(' || (y == ')' || ( y == '"' || ( y == ';' || is_whitespace!(y))))
-        }
-    )
-}
-
-macro_rules! is_digit {
-    ($c:expr) => (
-        match $c {
-            '0'...'9' => true,
-            _ => false
-        }
-    )
-}
-
-mod number;
-use self::number::parse_number;
-pub use self::number::NumberToken;
+use super::number::{parse_number, NumberToken};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Token {
@@ -66,10 +37,12 @@ pub enum Token {
     Dot,
 }
 
+#[derive(Debug, Clone)]
 pub struct TokenizerError {
     error: TokenErrorClass
 }
 
+#[derive(Debug, Clone)]
 enum TokenErrorClass {
     InvalidPound,
     InvalidCharName,
@@ -79,57 +52,6 @@ enum TokenErrorClass {
     UnexpectedCharacter,
     InvalidScaping,
     InvalidNumber
-}
-
-#[derive(Debug)]
-pub struct Chars {
-    vec: Vec<char>,
-    case_sensitive: bool,
-    index: usize
-}
-
-impl Iterator for Chars {
-    type Item = char;
-
-    fn next(&mut self) -> Option<char> {
-        let r = self.peek(0);
-        self.index += 1;
-        r
-    }
-}
-
-impl Chars {
-    fn peek(&self, i: usize) -> Option<char> {
-        let c = self.vec.get(self.index + i);
-
-        if self.case_sensitive {
-            c.cloned()
-        } else {
-            c.map(|&d| d.to_ascii_lowercase())
-        }
-    }
-
-    fn peek_sensitive(&self, i: usize) -> Option<char> {
-        self.vec.get(self.index + i).cloned()
-    }
-
-    fn advance(&mut self, n: usize) {
-        self.index += n;
-    }
-
-    fn from_vec(v: Vec<char>) -> Chars {
-        Chars {
-            vec: v,
-            case_sensitive: false,
-            index: 0
-        }
-    }
-
-    // REVISIT
-    #[cfg(test)]
-    fn from_str(s: &str) -> Chars {
-        Chars::from_vec(s.chars().collect())
-    }
 }
 
 pub fn token_stream(chars: Vec<char>) -> Result<Vec<Token>, TokenizerError> {
@@ -162,7 +84,7 @@ const CHAR_NAME_SPACE : &'static [char] = &['s', 'p', 'a', 'c', 'e'];
 const CHAR_NAME_NEWLINE : &'static [char] = &['n', 'e', 'w', 'l', 'i', 'n', 'e'];
 
 
-fn next_token(mut stream: &mut Chars) -> Result<Option<Token>, TokenizerError> {
+pub fn next_token(mut stream: &mut Chars) -> Result<Option<Token>, TokenizerError> {
     let mut state = ParsingState::Normal;
     let mut string_buf = String::new();
 
@@ -344,9 +266,6 @@ fn next_token(mut stream: &mut Chars) -> Result<Option<Token>, TokenizerError> {
     }
 
 }
-
-#[cfg(test)]
-mod test;
 
 #[inline]
 fn is_initial(c: char) -> bool {

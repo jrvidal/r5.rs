@@ -5,7 +5,7 @@ use super::{
 };
 use std::collections::VecDeque;
 use std::iter::FromIterator;
-use ::parse::ast::datum::{Datum, AbbreviationKind};
+use ::reader::{Datum, AbbreviationKind};
 
 macro_rules! list {
     ( [ $( $x:expr ),* ] ) => (

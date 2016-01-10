@@ -1,5 +1,6 @@
 use super::*;
-use super::{next_token};
+use super::chars::Chars;
+use super::token::{next_token};
 
 fn assert_next(code: &str, token: Token) {
     let result = next_token(&mut Chars::from_str(code)).ok().unwrap().unwrap();
