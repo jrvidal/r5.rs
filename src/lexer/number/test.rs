@@ -1,5 +1,5 @@
 use super::*;
-use super::super::Chars;
+use super::super::chars::Chars;
 use super::{parse_prefix, parse_real, parse_suffix, parse_complex};
 
 #[test]
