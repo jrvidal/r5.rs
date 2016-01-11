@@ -1,7 +1,6 @@
 extern crate r5rs;
 
 use std::io::{stdin, stdout, Write};
-use std::collections::VecDeque;
 use r5rs::lexer::*;
 use r5rs::reader::*;
 
@@ -12,11 +11,16 @@ fn main() {
     loop {
         buffer.clear();
 
-        stdout().write("> ".as_bytes());
-        stdout().flush();
+        let prompt = stdout()
+            .write("> ".as_bytes())
+            .and(stdout().flush());
+
+        if let Err(_) = prompt {
+            panic!("IO error");
+        }
 
         match stdin().read_line(&mut buffer) {
-            Ok(n) => {},
+            Ok(_) => {},
             _ => panic!("")
         }
 

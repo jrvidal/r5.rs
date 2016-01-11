@@ -173,7 +173,10 @@ pub fn next_token(mut stream: &mut Chars) -> Result<Option<Token>, TokenizerErro
                             Some('s') | Some('n') if !is_delimiter!(stream.peek_sensitive(1)) => {
                                 state = ParsingState::Character(next.unwrap());
                             },
-                            Some(_) if is_delimiter!(stream.peek_sensitive(1)) => ret_val!(Token::Character(next.unwrap())),
+                            Some(_) if is_delimiter!(stream.peek_sensitive(1)) => {
+                                stream.next();
+                                ret_val!(Token::Character(next.unwrap()))
+                            },
                             _ => ret_err!(InvalidCharName)
                         }
                     },

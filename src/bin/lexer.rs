@@ -7,11 +7,18 @@ fn main() {
     let mut buffer = String::new();
     let mut chars;
     loop {
-        stdout().write("> ".as_bytes());
-        stdout().flush();
+        buffer.clear();
+
+        let prompt = stdout()
+            .write("> ".as_bytes())
+            .and(stdout().flush());
+
+        if let Err(_) = prompt {
+            panic!("IO error");
+        }
 
         match stdin().read_line(&mut buffer) {
-            Ok(n) => {},
+            Ok(_) => {},
             _ => panic!("")
         }
 
@@ -22,6 +29,5 @@ fn main() {
             Err(e) => println!("Invalid input: {:?}", e)
         }
 
-        buffer.clear();
     }
 }
