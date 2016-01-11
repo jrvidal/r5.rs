@@ -18,6 +18,18 @@ fn assert_next_identifier(code: &str, identifier: &str) {
     }
 }
 
+fn assert_tokens(code: &str, tokens: Vec<Token>) {
+    let mut stream = Chars::from_str(code);
+    for token in tokens.into_iter() {
+        let result = next_token(&mut stream).ok().unwrap().unwrap();
+        println!("{:?}", result);
+        assert!(result == token);
+    }
+    let next = next_token(&mut stream).ok().unwrap();
+    println!("{:?}", next);
+    assert!(next.is_none(), "Unfinished stream!");
+}
+
 #[test]
 fn whitespace_test() {
     assert_next(" (", Token::Open);
@@ -88,6 +100,9 @@ fn chars_test() {
     assert_next("#\\N foo", Token::Character('N'));
     assert_next("#\\newline", Token::Character('\n'));
     assert_next("#\\newline 2", Token::Character('\n'));
+
+    assert_tokens("#\\a", vec![Token::Character('a')]);
+    assert_tokens("#\\S", vec![Token::Character('S')]);
 
     // assert_next("#\\spac", Token::Character('s'));
     // assert_next("#\\spac1", Token::Character('s'));
