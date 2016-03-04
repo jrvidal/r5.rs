@@ -41,10 +41,9 @@ impl<T> GcObject<T> {
         }
     }
 
-    pub fn borrow_mut(&self) -> GcRefMut<T> {
-        unsafe {
-            GcRefMut((*self.ptr).borrow_mut())
-        }
+    // Unsafe so we know when we're using it
+    pub unsafe fn borrow_mut(&self) -> GcRefMut<T> {
+        GcRefMut((*self.ptr).borrow_mut())
     }
 }
 

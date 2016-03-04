@@ -39,6 +39,8 @@ pub fn eval(expression: &Expression, mut environment: &mut Environment, heap: &m
             })
         },
 
+        Expression::Quotation(ref datum) => Ok(from_datum(datum, heap)),
+
         Expression::Conditional {ref test, ref consequent, ref alternate} => {
             let test_value = try![ eval(test, environment, heap) ].to_bool();
 
@@ -146,25 +148,9 @@ pub fn eval(expression: &Expression, mut environment: &mut Environment, heap: &m
 
             eval(&body.expression, &mut call_env, heap)
         },
-        _ => panic!("unimplemented!!")
+        _ => panic!("unimplemented expression type for interpreter!")
     }
 }
-
-// pub fn eval(expression: &Expression, environment: &Shared<Environment>) -> Result<Object, EvalError> {
-//     let mut expression = expression.clone();
-//     let mut environment = environment.clone();
-//     let mut to_bool = false;
-//     let mut result;
-
-//     'eval_loop: loop { match expression {
-
-
-//     if to_bool {
-//         result = result.map(|obj| obj.to_bool()).map(ValueObject::Boolean).map(Object::ValueObject);
-//     }
-
-//     result
-// }
 
 fn eval_definition(definition: &Definition, environment: &mut Environment, heap: &mut Heap) -> Result<(), EvalError> {
     match *definition {
