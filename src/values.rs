@@ -1,4 +1,5 @@
 use super::parser::{Body, LambdaFormals};
+use super::reader::{Datum,  AbbreviationKind};
 use gc::{GcObject as GenericGcObject, Heap as GcHeap, GcRef as GenericGcRef};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -110,6 +111,20 @@ impl Object {
     }
 
     pub fn to_repl(&self) -> String {
+        let is_pair = match *self {
+            Object::RefObject(ref shared) => {
+                match *shared.borrow() {
+                    RefObject::Pair{..} => true,
+                    _ => false
+                }
+            }
+            _ => false
+        };
+
+        if is_pair {
+            return "(".to_string() + &pair_to_repl(self).1 + ")";
+        }
+
         match *self {
             Object::ValueObject(ValueObject::Boolean(true)) => "#t".to_string(),
             Object::ValueObject(ValueObject::Boolean(false)) => "#f".to_string(),
@@ -120,16 +135,10 @@ impl Object {
             Object::ValueObject(ValueObject::Symbol(ref s)) => s.clone(),
             Object::ValueObject(ValueObject::EmptyList) => "()".to_string(),
             Object::ValueObject(ValueObject::NoValue) => "".to_string(),
-            // _ => "<unimplemented>".to_string()
             Object::RefObject(ref shared) => {
                 match *shared.borrow() {
                     RefObject::Procedure{..} => "<procedure>".to_string(),
-                    RefObject::Pair {
-                        ref car,
-                        ref cdr
-                    } => {
-                        "(".to_string() + &car.to_repl() + " . " + &cdr.to_repl() + ")"
-                    },
+                    RefObject::String(ref s) => "\"".to_string() + s + "\"",
                     _ => "<unimplemented>".to_string()
                 }
             }
@@ -137,18 +146,28 @@ impl Object {
     }
 }
 
-// impl Clone for Object {
-//     fn clone(&self) -> Object {
-//         match *self {
-//             Object::ValueObject(ref v) => Object::ValueObject(v.clone()),
-//             Object::RefObject(ref shared) => Object::RefObject({
-//                 // let clone : GcObject = shared.clone();
-//                 // clone
-//                 shared
-//             })
-//         }
-//     }
-// }
+fn pair_to_repl(object: &Object) -> (bool, String) {
+    match *object {
+        Object::ValueObject(ValueObject::EmptyList) => return (true, "".to_string()),
+        Object::RefObject(ref shared) => match *shared.borrow() {
+            RefObject::Pair {
+                ref car,
+                ref cdr
+            } => {
+                let (is_list, s) = pair_to_repl(cdr);
+                let result = car.to_repl() +
+                    if is_list { if s.len() > 0 { " " } else { "" }} else {" . "} +
+                    &s;
+
+                return (true, result);
+            }
+            _ => {}
+        },
+        _ => {}
+    };
+
+    return (false, object.to_repl())
+}
 
 impl InnerEnv {
     pub fn has<T>(&self, var_name: T) -> bool where T: Borrow<String>, T: Hash + Eq {
@@ -199,15 +218,6 @@ impl InnerEnv {
     }
 }
 
-// use std::cell::{RefCell};
-// use std::rc::Rc;
-// use std::collections::HashMap;
-// use std::borrow::Borrow;
-// use gc::GcObject;
-
-
-// // }
-
 pub fn make_list(mut objects: Vec<Object>, heap: &mut Heap) -> Object {
     if objects.len() == 0 {
         return Object::ValueObject(ValueObject::EmptyList);
@@ -226,4 +236,58 @@ pub fn make_list(mut objects: Vec<Object>, heap: &mut Heap) -> Object {
     }
 
     last_pair
+}
+
+pub fn from_datum(datum: &Datum, heap: &mut Heap) -> Object {
+    match *datum {
+        Datum::Boolean(b) => Object::ValueObject(ValueObject::Boolean(b)),
+        Datum::Number(_) => Object::ValueObject(ValueObject::Number),
+        Datum::Character(c) => Object::ValueObject(ValueObject::Character(c)),
+        Datum::String(ref s) => heap.insert_ref(RefObject::String(s.clone())),
+        Datum::Symbol(ref s) => Object::ValueObject(ValueObject::Symbol(s.clone())),
+        Datum::List(ref datums) => {
+            if datums.len() == 0 {
+                return Object::ValueObject(ValueObject::EmptyList);
+            }
+
+            make_list(datums.iter().map(|dat| from_datum(dat, heap)).collect(), heap)
+        },
+        Datum::Vector(ref datums) => {
+            let objects = datums.iter().map(|dat| from_datum(dat, heap)).collect();
+            heap.insert_ref(RefObject::Vector(objects))
+        },
+        Datum::Pair {
+            ref car,
+            ref cdr
+        } => {
+            let last_cdr = from_datum(cdr, heap);
+            let last_car = from_datum(car.back().unwrap(), heap);
+            let mut result = heap.insert_ref(RefObject::Pair {
+                car: last_car,
+                cdr: last_cdr
+            });
+
+            for dat in car.iter().rev().skip(1) {
+                let local_car = from_datum(dat, heap);
+                result = heap.insert_ref(RefObject::Pair {
+                    car: local_car,
+                    cdr: result
+                });
+            }
+
+            result
+        },
+        Datum::Abbreviation {
+            kind: AbbreviationKind::Quote,
+            ref datum
+        } => {
+            let obj = from_datum(datum, heap);
+            let cdr = make_list(vec![obj], heap);
+            heap.insert_ref(RefObject::Pair {
+                car: Object::ValueObject(ValueObject::Symbol("quote".to_string())),
+                cdr: cdr
+            })
+        },
+        _ => panic!("unimplemented from_datum")
+    }
 }

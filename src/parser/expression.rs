@@ -489,7 +489,9 @@ fn parse_lambda_exp(mut datums: VecDeque<Datum>) -> Result<Expression, ()> {
 fn parse_body(mut datums: VecDeque<Datum>) -> Result<Body, ()> {
     let definitions = parse_definitions(&mut datums);
 
-    try![(datums.len() > 0).result()];
+    if datums.len() == 0 {
+        return Err(())
+    }
 
     datums.into_expressions().map(|mut exprs| {
         let expression = exprs.pop().unwrap();
@@ -613,8 +615,7 @@ fn parse_iteration_spec(datum: Datum) -> Result<IterationSpec, ()> {
 
 // TO DO: does this method really take 1 datum? The grammar suggests so.
 fn parse_quasiquotation(datum: Datum) -> Result<Expression, ()> {
-    println!("{:?}", datum);
-    unimplemented!();
+    panic!("unimplemented: parse quasiquotation expressions");
 }
 
 
