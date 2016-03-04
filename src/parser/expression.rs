@@ -114,8 +114,8 @@ pub struct IterationSpec {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Binding {
-    variable: String,
-    init: Box<Expression>
+    pub variable: String,
+    pub init: Box<Expression>
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -134,9 +134,9 @@ pub enum Definition {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Body {
-    definitions: Vec<Definition>,
-    commands: Vec<Expression>,
-    expression: Box<Expression>
+    pub definitions: Vec<Definition>,
+    pub commands: Vec<Expression>,
+    pub expression: Box<Expression>
 }
 
 #[derive(Debug, PartialEq, Clone)]
