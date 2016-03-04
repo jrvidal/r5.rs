@@ -11,5 +11,12 @@
         {
             "path": "src"
         }
-    ]
+    ],
+    "SublimeLinter": {
+        "linters": {
+            "rust": {
+                "use-crate-root": true
+            }
+        }
+    }
 }
