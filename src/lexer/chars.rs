@@ -4,7 +4,7 @@ use std::ascii::AsciiExt;
 pub struct Chars {
     vec: Vec<char>,
     pub case_sensitive: bool,
-    index: usize
+    index: usize,
 }
 
 impl Iterator for Chars {
@@ -40,7 +40,7 @@ impl Chars {
         Chars {
             vec: v,
             case_sensitive: false,
-            index: 0
+            index: 0,
         }
     }
 

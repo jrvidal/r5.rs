@@ -1,4 +1,4 @@
-use std::collections::{HashMap};
+use std::collections::HashMap;
 use std::cell::{RefCell, Ref, RefMut};
 use std::ops::{Deref, DerefMut, Not};
 
@@ -14,7 +14,7 @@ impl GcId {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum GarbageState {
     LEFT,
-    RIGHT
+    RIGHT,
 }
 
 impl Not for GarbageState {
@@ -23,7 +23,7 @@ impl Not for GarbageState {
     fn not(self) -> GarbageState {
         match self {
             GarbageState::LEFT => GarbageState::RIGHT,
-            GarbageState::RIGHT => GarbageState::LEFT
+            GarbageState::RIGHT => GarbageState::LEFT,
         }
     }
 }
@@ -34,13 +34,13 @@ pub struct Heap<T> {
     // TO DO: or maybe not? we could deref the RefCell (gasp!)
     map: HashMap<GcId, Box<RefCell<Payload<T>>>>,
     counter: GcId,
-    state: GarbageState
+    state: GarbageState,
 }
 
 #[derive(Clone, Debug)]
 struct Payload<T> {
     reachable: GarbageState,
-    payload: T
+    payload: T,
 }
 
 impl<T> Payload<T> {
@@ -52,7 +52,7 @@ impl<T> Payload<T> {
 #[derive(Debug)]
 pub struct GcObject<T> {
     id: GcId,
-    ptr: *const RefCell<Payload<T>>
+    ptr: *const RefCell<Payload<T>>,
 }
 
 pub struct GcRef<'a, T: 'a>(Ref<'a, Payload<T>>);
@@ -60,9 +60,7 @@ pub struct GcRefMut<'a, T: 'a>(RefMut<'a, Payload<T>>);
 
 impl<T> GcObject<T> {
     pub fn borrow(&self) -> GcRef<T> {
-        unsafe {
-            GcRef((*self.ptr).borrow())
-        }
+        unsafe { GcRef((*self.ptr).borrow()) }
     }
 
     // Unsafe so we know when we're using it
@@ -75,7 +73,7 @@ impl<T> Clone for GcObject<T> {
     fn clone(&self) -> GcObject<T> {
         GcObject {
             id: self.id,
-            ptr: self.ptr
+            ptr: self.ptr,
         }
     }
 }
@@ -108,43 +106,43 @@ impl<T> Heap<T> {
         Heap {
             map: HashMap::new(),
             counter: GcId(0),
-            state: GarbageState::LEFT
+            state: GarbageState::LEFT,
         }
     }
 
     pub fn insert(&mut self, value: T) -> GcObject<T> {
         let id = self.counter;
         let cell = RefCell::new(Payload {
-            payload: value,
-            reachable: self.state
-        });
+                                    payload: value,
+                                    reachable: self.state,
+                                });
         let cell_box = Box::new(cell);
         let ptr = {
-            let cell : &RefCell<Payload<T>> = &*cell_box;
+            let cell: &RefCell<Payload<T>> = &*cell_box;
             cell as *const RefCell<Payload<T>>
         };
 
         self.map.insert(id, cell_box);
         self.counter = self.counter.next();
 
-        GcObject {ptr: ptr, id: id}
+        GcObject { ptr: ptr, id: id }
     }
 
-    pub fn collect_garbage<'a>(&mut self, alive: T) where T: Iterator<Item=&'a GcObject<T>>, T: 'a {
+    pub fn collect_garbage<'a>(&mut self, alive: T)
+        where T: Iterator<Item = &'a GcObject<T>>,
+              T: 'a
+    {
         for obj in alive {
             let id = obj.id;
             match self.map.get_mut(&id) {
                 None => panic!("alive object not found on heap!"),
-                Some(ref cell) => {
-                    cell.borrow_mut().flip()
-                }
+                Some(ref cell) => cell.borrow_mut().flip(),
             };
         }
 
-        let deads : Vec<GcId> = self.map.iter()
-            .filter(|&(_, val)| {
-                (*val.borrow()).reachable == self.state
-            })
+        let deads: Vec<GcId> = self.map
+            .iter()
+            .filter(|&(_, val)| (*val.borrow()).reachable == self.state)
             .map(|(&k, _)| k)
             .collect();
 

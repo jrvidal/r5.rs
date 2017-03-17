@@ -1,6 +1,6 @@
 use super::*;
 use super::chars::Chars;
-use super::token::{next_token};
+use super::token::next_token;
 
 fn assert_next(code: &str, token: Token) {
     let result = next_token(&mut Chars::from_str(code)).ok().unwrap().unwrap();
@@ -13,8 +13,8 @@ fn assert_next_identifier(code: &str, identifier: &str) {
         Token::Identifier(id) => {
             println!("{:?} {:?}", id, identifier);
             assert!(id == identifier);
-        },
-        _ => panic!("Not an identifier")
+        }
+        _ => panic!("Not an identifier"),
     }
 }
 
@@ -129,27 +129,53 @@ fn identifiers_test() {
     assert_next_identifier("asdf;", "asdf");
     assert_next_identifier("a0", "a0");
 
-    for &c in [
-        // Special initials
-        '!', '$', '%', '&', '*',
-        '/', ':', '<', '=', '>',
-        '?', '^', '_', '~',
-        // Special subsequents
-        '+', '-', '.', '@'
-    ].iter() {
+    for &c in [// Special initials
+               '!',
+               '$',
+               '%',
+               '&',
+               '*',
+               '/',
+               ':',
+               '<',
+               '=',
+               '>',
+               '?',
+               '^',
+               '_',
+               '~',
+               // Special subsequents
+               '+',
+               '-',
+               '.',
+               '@']
+                .iter() {
         let mut s = "a".to_string();
         s.push(c);
         assert_next_identifier(&s[..], &s[..])
     }
 
-    for &c in [
-        // Special initials
-        '!', '$', '%', '&', '*',
-        '/', ':', '<', '=', '>',
-        '?', '^', '_', '~',
-        // Special subsequents
-        '+', '-', '.', '@'
-    ].iter() {
+    for &c in [// Special initials
+               '!',
+               '$',
+               '%',
+               '&',
+               '*',
+               '/',
+               ':',
+               '<',
+               '=',
+               '>',
+               '?',
+               '^',
+               '_',
+               '~',
+               // Special subsequents
+               '+',
+               '-',
+               '.',
+               '@']
+                .iter() {
         let mut s = "a".to_string();
         s.push(c);
         s.push(';');

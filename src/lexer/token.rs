@@ -39,7 +39,7 @@ pub enum Token {
 
 #[derive(Debug, Clone)]
 pub struct TokenizerError {
-    error: TokenErrorClass
+    error: TokenErrorClass,
 }
 
 #[derive(Debug, Clone)]
@@ -51,7 +51,7 @@ enum TokenErrorClass {
     UnfinishedChar,
     UnexpectedCharacter,
     InvalidScaping,
-    InvalidNumber
+    InvalidNumber,
 }
 
 pub fn token_stream(chars: Vec<char>) -> Result<Vec<Token>, TokenizerError> {
@@ -60,11 +60,13 @@ pub fn token_stream(chars: Vec<char>) -> Result<Vec<Token>, TokenizerError> {
 
     loop {
         match next_token(&mut stream) {
-            Ok(r) => match r {
-                None => {break},
-                Some(t) => tokens.push(t)
-            },
-            Err(e) => return Err(e)
+            Ok(r) => {
+                match r {
+                    None => break,
+                    Some(t) => tokens.push(t),
+                }
+            }
+            Err(e) => return Err(e),
         }
     }
 
@@ -80,8 +82,8 @@ enum ParsingState {
     String,
 }
 
-const CHAR_NAME_SPACE : &'static [char] = &['s', 'p', 'a', 'c', 'e'];
-const CHAR_NAME_NEWLINE : &'static [char] = &['n', 'e', 'w', 'l', 'i', 'n', 'e'];
+const CHAR_NAME_SPACE: &'static [char] = &['s', 'p', 'a', 'c', 'e'];
+const CHAR_NAME_NEWLINE: &'static [char] = &['n', 'e', 'w', 'l', 'i', 'n', 'e'];
 
 
 pub fn next_token(mut stream: &mut Chars) -> Result<Option<Token>, TokenizerError> {
@@ -96,10 +98,14 @@ pub fn next_token(mut stream: &mut Chars) -> Result<Option<Token>, TokenizerErro
                 (None, _) => return Ok(None),
 
                 // Pound
-                (Some('#'), Some('t')) if is_delimiter!(stream.peek(2)) => ret_val!(Token::Boolean(true), stream, 2),
-                (Some('#'), Some('f')) if is_delimiter!(stream.peek(2)) => ret_val!(Token::Boolean(false), stream, 2),
+                (Some('#'), Some('t')) if is_delimiter!(stream.peek(2)) => {
+                    ret_val!(Token::Boolean(true), stream, 2)
+                }
+                (Some('#'), Some('f')) if is_delimiter!(stream.peek(2)) => {
+                    ret_val!(Token::Boolean(false), stream, 2)
+                }
                 (Some('#'), Some('(')) => ret_val!(Token::OpenVector, stream, 2),
-                (Some('#'), Some('\\')) => {/*char, delegate to main loop*/},
+                (Some('#'), Some('\\')) => { /*char, delegate to main loop*/ }
 
                 (Some('#'), Some('e')) |
                 (Some('#'), Some('i')) |
@@ -110,25 +116,28 @@ pub fn next_token(mut stream: &mut Chars) -> Result<Option<Token>, TokenizerErro
                 (Some('0'...'9'), _) |
                 (Some('+'), Some('0'...'9')) |
                 (Some('-'), Some('0'...'9')) |
-                (Some('.'), Some('0'...'9'))
-                    => match parse_number(&mut stream) {
+                (Some('.'), Some('0'...'9')) => {
+                    match parse_number(&mut stream) {
                         Ok(nt) => ret_val!(Token::Number(nt)),
                         Err(_) => ret_err!(InvalidNumber),
-                    },
+                    }
+                }
 
                 (Some('#'), _) => ret_err!(InvalidPound),
 
-                _ => {/*delegate to main loop*/}
+                _ => { /*delegate to main loop*/ }
             }
         }
 
         let c = match stream.next() {
             Some(d) => d,
 
-            None => match state {
-                ParsingState::Character(_) => ret_err!(InvalidCharName),
-                ParsingState::String => ret_err!(UnclosedString),
-                _ => return Ok(None)
+            None => {
+                match state {
+                    ParsingState::Character(_) => ret_err!(InvalidCharName),
+                    ParsingState::String => ret_err!(UnclosedString),
+                    _ => return Ok(None),
+                }
             }
         };
 
@@ -150,19 +159,19 @@ pub fn next_token(mut stream: &mut Chars) -> Result<Option<Token>, TokenizerErro
                             (Some('.'), Some('.')) if is_delimiter!(stream.peek(2)) => {
                                 stream.advance(2);
                                 ret_val!(Token::Identifier("...".to_string()));
-                            },
+                            }
                             (x, _) if is_delimiter!(x) => ret_val!(Token::Dot),
-                            _ => ret_err!(InvalidDot)
+                            _ => ret_err!(InvalidDot),
                         }
-                    },
+                    }
                     ';' => {
                         state = ParsingState::Comment;
-                    },
+                    }
                     '"' => {
                         string_buf.clear();
                         state = ParsingState::String;
                         stream.case_sensitive = true;
-                    },
+                    }
 
                     // It's '#\' for sure
                     '#' => {
@@ -172,45 +181,47 @@ pub fn next_token(mut stream: &mut Chars) -> Result<Option<Token>, TokenizerErro
                             None => ret_err!(UnfinishedChar),
                             Some('s') | Some('n') if !is_delimiter!(stream.peek_sensitive(1)) => {
                                 state = ParsingState::Character(next.unwrap());
-                            },
+                            }
                             Some(_) if is_delimiter!(stream.peek_sensitive(1)) => {
                                 stream.next();
                                 ret_val!(Token::Character(next.unwrap()))
-                            },
-                            _ => ret_err!(InvalidCharName)
+                            }
+                            _ => ret_err!(InvalidCharName),
                         }
-                    },
+                    }
 
                     // It's an identifier
-                    '+' | '-' if is_delimiter!(stream.peek(0)) => ret_val!(Token::Identifier(c.to_string())),
+                    '+' | '-' if is_delimiter!(stream.peek(0)) => {
+                        ret_val!(Token::Identifier(c.to_string()))
+                    }
                     ',' => {
                         match stream.peek(0) {
                             Some('@') => {
                                 stream.next();
                                 ret_val!(Token::CommaAt)
-                            },
-                            _ => ret_val!(Token::Comma)
+                            }
+                            _ => ret_val!(Token::Comma),
                         }
-                    },
+                    }
                     d if is_initial(d) => {
                         match stream.peek(0) {
                             Some(e) if is_subsequent(e) => {
                                 string_buf.clear();
                                 string_buf.push(d);
                                 state = ParsingState::Identifier;
-                            },
-                            _ => ret_val!(Token::Identifier(d.to_string()))
+                            }
+                            _ => ret_val!(Token::Identifier(d.to_string())),
                         }
-                    },
-                    _ => ret_err!(UnexpectedCharacter)
+                    }
+                    _ => ret_err!(UnexpectedCharacter),
                 }
-            },
+            }
             ParsingState::Comment => {
                 if c == '\n' {
                     state = ParsingState::Normal;
                 }
                 continue;
-            },
+            }
             ParsingState::Character(d) => {
                 let char_name = if d == 's' {
                     CHAR_NAME_SPACE
@@ -226,10 +237,10 @@ pub fn next_token(mut stream: &mut Chars) -> Result<Option<Token>, TokenizerErro
                     if i == l && is_delimiter!(c) {
                         stream.advance(l);
                         ret_val!(Token::Character(if char_name == CHAR_NAME_SPACE {
-                            ' '
-                        } else {
-                            '\n'
-                        }));
+                                                      ' '
+                                                  } else {
+                                                      '\n'
+                                                  }));
                     } else if i != l && c == Some(char_name[i + 1]) {
                         i += 1;
                         continue;
@@ -237,7 +248,7 @@ pub fn next_token(mut stream: &mut Chars) -> Result<Option<Token>, TokenizerErro
                         ret_err!(InvalidCharName);
                     }
                 }
-            },
+            }
             ParsingState::String => {
                 match c {
                     '"' => ret_val!(Token::String(string_buf.clone())),
@@ -245,22 +256,20 @@ pub fn next_token(mut stream: &mut Chars) -> Result<Option<Token>, TokenizerErro
                         match stream.next() {
                             Some('"') => {
                                 string_buf.push('"');
-                            },
-                            Some('\\') => {
-                                string_buf.push('\\')
                             }
+                            Some('\\') => string_buf.push('\\'),
                             _ => ret_err!(InvalidScaping),
                         }
-                    },
-                    _ => string_buf.push(c)
+                    }
+                    _ => string_buf.push(c),
                 }
-            },
+            }
             ParsingState::Identifier => {
                 string_buf.push(c);
 
                 match stream.peek(0) {
-                    Some (d) if is_subsequent(d) => {},
-                    _ => ret_val!(Token::Identifier(string_buf.clone()))
+                    Some(d) if is_subsequent(d) => {}
+                    _ => ret_val!(Token::Identifier(string_buf.clone())),
                 }
 
             }
@@ -284,17 +293,15 @@ fn is_subsequent(c: char) -> bool {
 fn is_letter(c: char) -> bool {
     match c {
         'a'...'z' => true,
-        _ => false
+        _ => false,
     }
 }
 
 #[inline]
 fn is_special_initial(c: char) -> bool {
     match c {
-        '!' | '$' | '%' | '&' | '*' |
-        '/' | ':' | '<' | '=' | '>' |
-        '?' | '^' | '_' | '~' => true,
-        _ => false
+        '!' | '$' | '%' | '&' | '*' | '/' | ':' | '<' | '=' | '>' | '?' | '^' | '_' | '~' => true,
+        _ => false,
     }
 }
 
@@ -302,6 +309,6 @@ fn is_special_initial(c: char) -> bool {
 fn is_special_subsequent(c: char) -> bool {
     match c {
         '+' | '-' | '.' | '@' => true,
-        _ => false
+        _ => false,
     }
 }

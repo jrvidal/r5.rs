@@ -1,11 +1,9 @@
 use super::*;
-use super::{
-    parse_lambda_formals_exp, parse_definition, parse_body, parse_let_exp,
-    parse_else_clause, parse_cond_clause_exp, parse_case_clause_exp, parse_iteration_spec
-};
+use super::{parse_lambda_formals_exp, parse_definition, parse_body, parse_let_exp,
+            parse_else_clause, parse_cond_clause_exp, parse_case_clause_exp, parse_iteration_spec};
 use std::collections::VecDeque;
 use std::iter::FromIterator;
-use ::reader::{Datum, AbbreviationKind};
+use reader::{Datum, AbbreviationKind};
 
 macro_rules! list {
     ( [ $( $x:expr ),* ] ) => (
@@ -61,7 +59,7 @@ fn reserved_keywords_error() {
 fn simple_quotation() {
     let datum = Datum::Abbreviation {
         datum: Box::new(Datum::Boolean(true)),
-        kind: AbbreviationKind::Quote
+        kind: AbbreviationKind::Quote,
     };
     let expected = Expression::Quotation(Datum::Boolean(true));
     assert_parsed!(datum, expected);
@@ -71,11 +69,11 @@ fn simple_quotation() {
 fn list_quotation() {
     let pair = Datum::Pair {
         car: vec_deque![symbol!("foobar")],
-        cdr: Box::new(Datum::Character('a'))
+        cdr: Box::new(Datum::Character('a')),
     };
     let datum = Datum::Abbreviation {
         datum: Box::new(pair.clone()),
-        kind: AbbreviationKind::Quote
+        kind: AbbreviationKind::Quote,
     };
     let expected = Expression::Quotation(pair);
     assert_parsed!(datum, expected);
@@ -88,9 +86,7 @@ fn verbose_quotation() {
             Datum::Boolean(false)
         ])
     ]);
-    let expected = Expression::Quotation(Datum::Vector(
-        vec_deque![Datum::Boolean(false)],
-    ));
+    let expected = Expression::Quotation(Datum::Vector(vec_deque![Datum::Boolean(false)]));
     assert_parsed!(datum, expected);
 }
 
@@ -131,7 +127,7 @@ fn call_expression() {
         operands: vec![
             Expression::Character('a'),
             Expression::Quotation(list!([]))
-        ]
+        ],
     };
     assert_parsed!(datum, expected);
 }
@@ -145,10 +141,10 @@ fn short_if_expression() {
     let expected = Expression::Conditional {
         test: Box::new(Expression::Variable("foobar".to_string())),
         consequent: Box::new(Expression::Call {
-            operator: Box::new(Expression::Variable("some_fn".to_string())),
-            operands: vec![Expression::Boolean(true)]
-        }),
-        alternate: None
+                                 operator: Box::new(Expression::Variable("some_fn".to_string())),
+                                 operands: vec![Expression::Boolean(true)],
+                             }),
+        alternate: None,
     };
     assert_parsed!(datum, expected);
 }
@@ -166,7 +162,7 @@ fn long_if_expression() {
     let expected = Expression::Conditional {
         test: Box::new(Expression::Boolean(false)),
         consequent: Box::new(Expression::String("foobar".to_string())),
-        alternate: Some(Box::new(Expression::Quotation(list!([]))))
+        alternate: Some(Box::new(Expression::Quotation(list!([])))),
     };
     assert_parsed!(datum, expected);
 }
@@ -203,7 +199,7 @@ fn assignment() {
     ]);
     let expected = Expression::Assignment {
         variable: "x".to_string(),
-        expression: Box::new(Expression::Boolean(true))
+        expression: Box::new(Expression::Boolean(true)),
     };
     assert_parsed!(datum, expected);
 }
@@ -261,12 +257,13 @@ fn lambda_formals_rest() {
             symbol!("x"),
             symbol!("y"),
         ],
-        cdr: Box::new(symbol!("z"))
+        cdr: Box::new(symbol!("z")),
     };
     let expected = LambdaFormals::Rest(vec![
         "x".to_string(),
         "y".to_string(),
-    ], "z".to_string());
+    ],
+                                       "z".to_string());
     assert_eq!(parse_lambda_formals_exp(datum), Ok(expected));
 }
 
@@ -305,9 +302,9 @@ fn simple_definition() {
     let expected = Definition::Define {
         variable: "x".to_string(),
         expression: Box::new(Expression::Call {
-            operator: Box::new(Expression::Variable("f".to_string())),
-            operands: vec![]
-        })
+                                 operator: Box::new(Expression::Variable("f".to_string())),
+                                 operands: vec![],
+                             }),
     };
     assert_eq!(parse_definition(datum), Ok(expected));
 }
@@ -329,8 +326,8 @@ fn lambda_definition() {
         body: Body {
             definitions: vec![],
             commands: vec![],
-            expression: Box::new(Expression::Variable("y".to_string()))
-        }
+            expression: Box::new(Expression::Variable("y".to_string())),
+        },
     };
     assert_eq!(parse_definition(datum), Ok(expected));
 }
@@ -400,7 +397,7 @@ fn body() {
     let expected = Body {
         definitions: vec![],
         commands: vec![],
-        expression: Box::new(Expression::Variable("x".to_string()))
+        expression: Box::new(Expression::Variable("x".to_string())),
     };
     assert_eq!(parse_body(datums), Ok(expected));
 }
@@ -433,8 +430,8 @@ fn lambda_exp() {
         body: Body {
             definitions: vec![],
             commands: vec![],
-            expression: Box::new(Expression::Variable("x".to_string()))
-        }
+            expression: Box::new(Expression::Variable("x".to_string())),
+        },
     };
 
     assert_parsed!(datum, expected);
@@ -474,19 +471,17 @@ fn let_exp() {
         ]),
         symbol!("y")
     ];
-    let expected = (
-        vec![
+    let expected = (vec![
             Binding {
                 variable: "x".to_string(),
                 init: Box::new(Expression::Character('a'))
             }
         ],
-        Body {
-            commands: vec![],
-            definitions: vec![],
-            expression: Box::new(Expression::Variable("y".to_string()))
-        }
-    );
+                    Body {
+                        commands: vec![],
+                        definitions: vec![],
+                        expression: Box::new(Expression::Variable("y".to_string())),
+                    });
     assert_eq!(parse_let_exp(datums), Ok(expected));
 }
 
@@ -592,19 +587,21 @@ fn let_star() {
         ]),
         symbol!("x")
     ]);
-    let expected = Expression::Derived(Derived::LetStar {
-        bindings: vec![
+    let expected =
+        Expression::Derived(Derived::LetStar {
+                                bindings: vec![
             Binding {
                 variable: "x".to_string(),
                 init: Box::new(Expression::Boolean(true))
             }
         ],
-        body: Body {
-            commands: vec![],
-            definitions: vec![],
-            expression: Box::new(Expression::Variable("x".to_string()))
-        }
-    });
+                                body: Body {
+                                    commands: vec![],
+                                    definitions: vec![],
+                                    expression:
+                                        Box::new(Expression::Variable("x".to_string())),
+                                },
+                            });
     assert_parsed!(datum, expected);
 }
 
@@ -617,20 +614,22 @@ fn named_let() {
         ]),
         symbol!("x")
     ]);
-    let expected = Expression::Derived(Derived::NamedLet {
-        variable: "f".to_string(),
-        bindings: vec![
+    let expected =
+        Expression::Derived(Derived::NamedLet {
+                                variable: "f".to_string(),
+                                bindings: vec![
             Binding {
                 variable: "x".to_string(),
                 init: Box::new(Expression::Boolean(true))
             }
         ],
-        body: Body {
-            commands: vec![],
-            definitions: vec![],
-            expression: Box::new(Expression::Variable("x".to_string()))
-        }
-    });
+                                body: Body {
+                                    commands: vec![],
+                                    definitions: vec![],
+                                    expression:
+                                        Box::new(Expression::Variable("x".to_string())),
+                                },
+                            });
     assert_parsed!(datum, expected);
 }
 
@@ -643,7 +642,7 @@ fn iteration_spec() {
     let expected = IterationSpec {
         variable: "x".to_string(),
         init: Box::new(Expression::Boolean(true)),
-        step: None
+        step: None,
     };
     assert_eq!(parse_iteration_spec(datum), Ok(expected));
 }
@@ -658,7 +657,7 @@ fn iteration_spec_with_step() {
     let expected = IterationSpec {
         variable: "x".to_string(),
         init: Box::new(Expression::Boolean(true)),
-        step: Some(Box::new(Expression::String("dsf".to_string())))
+        step: Some(Box::new(Expression::String("dsf".to_string()))),
     };
     assert_eq!(parse_iteration_spec(datum), Ok(expected));
 }
@@ -715,10 +714,8 @@ fn long_else_clause() {
             Datum::Boolean(true)
         ])
     ];
-    let expected = (
-        vec![Expression::Variable("y".to_string())],
-        Box::new(Expression::Boolean(true))
-    );
+    let expected = (vec![Expression::Variable("y".to_string())],
+                    Box::new(Expression::Boolean(true)));
     assert_eq!(parse_else_clause(&mut datums), Ok(Some(expected)));
 }
 
@@ -769,7 +766,7 @@ fn cond_clause() {
         test: Box::new(Expression::Variable("x".to_string())),
         expressions: vec![
             Expression::Variable("y".to_string()), Expression::Boolean(true)
-        ]
+        ],
     };
     assert_eq!(parse_cond_clause_exp(datum), Ok(expected));
 }
@@ -783,7 +780,7 @@ fn expressionless_cond_clause() {
     ]);
     let expected = CondClause::Arrow {
         test: Box::new(Expression::Variable("x".to_string())),
-        recipient: Box::new(Expression::Variable("y".to_string()))
+        recipient: Box::new(Expression::Variable("y".to_string())),
     };
     assert_eq!(parse_cond_clause_exp(datum), Ok(expected));
 }
@@ -795,7 +792,7 @@ fn arrow_cond_clause() {
     ]);
     let expected = CondClause::Normal {
         test: Box::new(Expression::Variable("x".to_string())),
-        expressions: vec![]
+        expressions: vec![],
     };
     assert_eq!(parse_cond_clause_exp(datum), Ok(expected));
 }
@@ -838,7 +835,7 @@ fn case_clause() {
             Datum::Vector(vec_deque![])
         ],
         commands: vec![],
-        expression: Box::new(Expression::Variable("y".to_string()))
+        expression: Box::new(Expression::Variable("y".to_string())),
     };
     assert_eq!(parse_case_clause_exp(datum), Ok(expected));
 }
@@ -875,13 +872,14 @@ fn cond() {
             Datum::String("foo".to_string())
         ]),
     ]);
-    let expected = Expression::Derived(Derived::Cond {
-        head_clause: CondClause::Arrow {
-            test: Box::new(Expression::Variable("a".to_string())),
-            recipient: Box::new(Expression::String("foo".to_string()))
-        },
-        tail_clauses: vec![]
-    });
+    let expected =
+        Expression::Derived(Derived::Cond {
+                                head_clause: CondClause::Arrow {
+                                    test: Box::new(Expression::Variable("a".to_string())),
+                                    recipient: Box::new(Expression::String("foo".to_string())),
+                                },
+                                tail_clauses: vec![],
+                            });
     assert_parsed!(datum, expected);
 }
 
@@ -905,7 +903,8 @@ fn delay() {
     let datum = list!("delay", [
         symbol!("x")
     ]);
-    let expected = Expression::Derived(Derived::Delay(Box::new(Expression::Variable("x".to_string()))));
+    let expected =
+        Expression::Derived(Derived::Delay(Box::new(Expression::Variable("x".to_string()))));
     assert_parsed!(datum, expected);
 }
 

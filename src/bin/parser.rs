@@ -14,17 +14,15 @@ fn main() {
         buffer.clear();
 
 
-        let prompt = stdout()
-            .write("> ".as_bytes())
-            .and(stdout().flush());
+        let prompt = stdout().write("> ".as_bytes()).and(stdout().flush());
 
         if let Err(_) = prompt {
             panic!("IO error");
         }
 
         match stdin().read_line(&mut buffer) {
-            Ok(_) => {},
-            _ => panic!("")
+            Ok(_) => {}
+            _ => panic!(""),
         }
 
         chars = buffer.clone().chars().collect();
@@ -41,14 +39,22 @@ fn main() {
 
         let datum = match parse_datum(&mut tokens) {
             Ok(Some(datum)) => datum,
-            Err(e) => { println!("Invalid datum: {:?}", e); continue; },
-            Ok(None) => {continue;}
+            Err(e) => {
+                println!("Invalid datum: {:?}", e);
+                continue;
+            }
+            Ok(None) => {
+                continue;
+            }
         };
 
         // println!("datum: {:?}", datum);
         let expression = match parse_expression(datum) {
             Ok(exp) => exp,
-            Err(_) => {println!("Invalid expression"); continue;},
+            Err(_) => {
+                println!("Invalid expression");
+                continue;
+            }
         };
 
         println!("{:?}", expression);

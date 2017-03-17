@@ -1,5 +1,5 @@
 use super::parser::{Body, LambdaFormals};
-use super::reader::{Datum,  AbbreviationKind};
+use super::reader::{Datum, AbbreviationKind};
 use gc::{GcObject as GenericGcObject, Heap as GcHeap, GcRef as GenericGcRef};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -22,17 +22,14 @@ pub enum Object {
 
 #[derive(Debug)]
 pub enum RefObject {
-    Pair {
-        car: Object,
-        cdr: Object,
-    },
+    Pair { car: Object, cdr: Object },
     String(String),
     Vector(Vec<Object>),
     Procedure {
         body: Box<Body>,
         formals: LambdaFormals,
-        environment: Environment
-    }
+        environment: Environment,
+    },
 }
 
 // TO DO: ports?
@@ -43,7 +40,7 @@ pub enum ValueObject {
     Character(char),
     Symbol(String),
     EmptyList,
-    NoValue
+    NoValue,
 }
 
 
@@ -54,30 +51,41 @@ impl Environment {
     pub fn new(parent: Option<Environment>) -> Environment {
         let inner = InnerEnv {
             bindings: HashMap::new(),
-            parent: parent.map(|env| env.0)
+            parent: parent.map(|env| env.0),
         };
         Environment(Rc::new(RefCell::new(inner)))
     }
 
-    pub fn has<T>(&self, var_name: T) -> bool where T: Borrow<String>, T: Hash + Eq {
-        let inner_cell : &RefCell<InnerEnv> = &*self.0;
+    pub fn has<T>(&self, var_name: T) -> bool
+        where T: Borrow<String>,
+              T: Hash + Eq
+    {
+        let inner_cell: &RefCell<InnerEnv> = &*self.0;
         inner_cell.borrow().has(var_name)
     }
 
 
-    pub fn get<T>(&self, var_name: T) -> Option<Object> where T: Borrow<String>, T: Hash + Eq {
-        let inner_cell : &RefCell<InnerEnv> = &*self.0;
+    pub fn get<T>(&self, var_name: T) -> Option<Object>
+        where T: Borrow<String>,
+              T: Hash + Eq
+    {
+        let inner_cell: &RefCell<InnerEnv> = &*self.0;
         inner_cell.borrow().get(var_name)
     }
 
     pub fn set_mut<T>(&mut self, var_name: T, value: Object, strict: bool) -> bool
-    where T: Borrow<String>, T: Hash + Eq {
-        let inner_cell : &RefCell<InnerEnv> = &*self.0;
+        where T: Borrow<String>,
+              T: Hash + Eq
+    {
+        let inner_cell: &RefCell<InnerEnv> = &*self.0;
         inner_cell.borrow_mut().set_mut(var_name, value, strict)
     }
 
-    pub fn set<T>(&mut self, var_name: T, value: Object) where T: Borrow<String>, T: Hash + Eq {
-        let inner_cell : &RefCell<InnerEnv> = &*self.0;
+    pub fn set<T>(&mut self, var_name: T, value: Object)
+        where T: Borrow<String>,
+              T: Hash + Eq
+    {
+        let inner_cell: &RefCell<InnerEnv> = &*self.0;
         inner_cell.borrow_mut().set(var_name, value)
     }
 }
@@ -85,7 +93,7 @@ impl Environment {
 #[derive(Debug)]
 pub struct InnerEnv {
     parent: Option<Shared<InnerEnv>>,
-    bindings: HashMap<String, Object>
+    bindings: HashMap<String, Object>,
 }
 
 impl Heap {
@@ -106,7 +114,7 @@ impl Object {
     pub fn to_bool(&self) -> bool {
         match *self {
             Object::ValueObject(ValueObject::Boolean(false)) => false,
-            _ => true
+            _ => true,
         }
     }
 
@@ -114,11 +122,11 @@ impl Object {
         let is_pair = match *self {
             Object::RefObject(ref shared) => {
                 match *shared.borrow() {
-                    RefObject::Pair{..} => true,
-                    _ => false
+                    RefObject::Pair { .. } => true,
+                    _ => false,
                 }
             }
-            _ => false
+            _ => false,
         };
 
         if is_pair {
@@ -137,9 +145,9 @@ impl Object {
             Object::ValueObject(ValueObject::NoValue) => "".to_string(),
             Object::RefObject(ref shared) => {
                 match *shared.borrow() {
-                    RefObject::Procedure{..} => "<procedure>".to_string(),
+                    RefObject::Procedure { .. } => "<procedure>".to_string(),
                     RefObject::String(ref s) => "\"".to_string() + s + "\"",
-                    _ => "<unimplemented>".to_string()
+                    _ => "<unimplemented>".to_string(),
                 }
             }
         }
@@ -149,60 +157,72 @@ impl Object {
 fn pair_to_repl(object: &Object) -> (bool, String) {
     match *object {
         Object::ValueObject(ValueObject::EmptyList) => return (true, "".to_string()),
-        Object::RefObject(ref shared) => match *shared.borrow() {
-            RefObject::Pair {
-                ref car,
-                ref cdr
-            } => {
-                let (is_list, s) = pair_to_repl(cdr);
-                let result = car.to_repl() +
-                    if is_list { if s.len() > 0 { " " } else { "" }} else {" . "} +
-                    &s;
+        Object::RefObject(ref shared) => {
+            match *shared.borrow() {
+                RefObject::Pair { ref car, ref cdr } => {
+                    let (is_list, s) = pair_to_repl(cdr);
+                    let result = car.to_repl() +
+                                 if is_list {
+                                     if s.len() > 0 { " " } else { "" }
+                                 } else {
+                                     " . "
+                                 } + &s;
 
-                return (true, result);
+                    return (true, result);
+                }
+                _ => {}
             }
-            _ => {}
-        },
+        }
         _ => {}
     };
 
-    return (false, object.to_repl())
+    return (false, object.to_repl());
 }
 
 impl InnerEnv {
-    pub fn has<T>(&self, var_name: T) -> bool where T: Borrow<String>, T: Hash + Eq {
+    pub fn has<T>(&self, var_name: T) -> bool
+        where T: Borrow<String>,
+              T: Hash + Eq
+    {
         if self.bindings.contains_key(var_name.borrow()) {
             return true;
         }
 
-        let parent : &RefCell<InnerEnv> = match self.parent {
+        let parent: &RefCell<InnerEnv> = match self.parent {
             Some(ref e) => e,
-            None => return false
+            None => return false,
         };
 
         parent.borrow().has(var_name)
     }
 
-    pub fn get<T>(&self, var_name: T) -> Option<Object> where T: Borrow<String>, T: Hash + Eq {
-        self.bindings.get(var_name.borrow())
-            .map(|val| { val.clone() })
-            .or_else(|| {
-                match self.parent {
-                    None => None,
-                    Some(ref parent) => {
-                        let cell : &RefCell<InnerEnv> = &*parent;
-                        cell.borrow().get(var_name)
-                    }
-                }
-            })
+    pub fn get<T>(&self, var_name: T) -> Option<Object>
+        where T: Borrow<String>,
+              T: Hash + Eq
+    {
+        self.bindings
+            .get(var_name.borrow())
+            .map(|val| val.clone())
+            .or_else(|| match self.parent {
+                         None => None,
+                         Some(ref parent) => {
+                let cell: &RefCell<InnerEnv> = &*parent;
+                cell.borrow().get(var_name)
+            }
+                     })
     }
 
-    pub fn set<T>(&mut self, var_name: T, value: Object) where T: Borrow<String>, T: Hash + Eq {
+    pub fn set<T>(&mut self, var_name: T, value: Object)
+        where T: Borrow<String>,
+              T: Hash + Eq
+    {
         self.bindings.insert(var_name.borrow().clone(), value);
     }
 
     pub fn set_mut<T>(&mut self, var_name: T, value: Object, strict: bool) -> bool
-    where T: Borrow<String>, T: Hash + Eq {
+        where T: Borrow<String>,
+              T: Hash + Eq
+    {
         if self.bindings.contains_key(var_name.borrow()) || (self.parent.is_none() && !strict) {
             self.bindings.insert(var_name.borrow().clone(), value);
             return true;
@@ -210,9 +230,9 @@ impl InnerEnv {
 
         match self.parent {
             Some(ref parent) => {
-                let borrowed : &RefCell<InnerEnv> = parent.borrow();
+                let borrowed: &RefCell<InnerEnv> = parent.borrow();
                 borrowed.borrow_mut().set_mut(var_name, value, strict)
-            },
+            }
             None => !strict,
         }
     }
@@ -224,15 +244,15 @@ pub fn make_list(mut objects: Vec<Object>, heap: &mut Heap) -> Object {
     }
 
     let mut last_pair = heap.insert_ref(RefObject::Pair {
-        car: objects.pop().unwrap(),
-        cdr: Object::ValueObject(ValueObject::EmptyList)
-    });
+                                            car: objects.pop().unwrap(),
+                                            cdr: Object::ValueObject(ValueObject::EmptyList),
+                                        });
 
     for obj in objects.into_iter().rev() {
         last_pair = heap.insert_ref(RefObject::Pair {
-            car: obj,
-            cdr: last_pair
-        });
+                                        car: obj,
+                                        cdr: last_pair,
+                                    });
     }
 
     last_pair
@@ -250,44 +270,39 @@ pub fn from_datum(datum: &Datum, heap: &mut Heap) -> Object {
                 return Object::ValueObject(ValueObject::EmptyList);
             }
 
-            make_list(datums.iter().map(|dat| from_datum(dat, heap)).collect(), heap)
-        },
+            make_list(datums.iter().map(|dat| from_datum(dat, heap)).collect(),
+                      heap)
+        }
         Datum::Vector(ref datums) => {
             let objects = datums.iter().map(|dat| from_datum(dat, heap)).collect();
             heap.insert_ref(RefObject::Vector(objects))
-        },
-        Datum::Pair {
-            ref car,
-            ref cdr
-        } => {
+        }
+        Datum::Pair { ref car, ref cdr } => {
             let last_cdr = from_datum(cdr, heap);
             let last_car = from_datum(car.back().unwrap(), heap);
             let mut result = heap.insert_ref(RefObject::Pair {
-                car: last_car,
-                cdr: last_cdr
-            });
+                                                 car: last_car,
+                                                 cdr: last_cdr,
+                                             });
 
             for dat in car.iter().rev().skip(1) {
                 let local_car = from_datum(dat, heap);
                 result = heap.insert_ref(RefObject::Pair {
-                    car: local_car,
-                    cdr: result
-                });
+                                             car: local_car,
+                                             cdr: result,
+                                         });
             }
 
             result
-        },
-        Datum::Abbreviation {
-            kind: AbbreviationKind::Quote,
-            ref datum
-        } => {
+        }
+        Datum::Abbreviation { kind: AbbreviationKind::Quote, ref datum } => {
             let obj = from_datum(datum, heap);
             let cdr = make_list(vec![obj], heap);
             heap.insert_ref(RefObject::Pair {
-                car: Object::ValueObject(ValueObject::Symbol("quote".to_string())),
-                cdr: cdr
-            })
-        },
-        _ => panic!("unimplemented from_datum")
+                                car: Object::ValueObject(ValueObject::Symbol("quote".to_string())),
+                                cdr: cdr,
+                            })
+        }
+        _ => panic!("unimplemented from_datum"),
     }
 }

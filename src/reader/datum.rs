@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
-use ::lexer::{Token, NumberToken};
-use ::helpers::*;
+use lexer::{Token, NumberToken};
+use helpers::*;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Datum {
@@ -14,13 +14,13 @@ pub enum Datum {
     // car is non-empty!
     Pair {
         car: VecDeque<Datum>,
-        cdr: Box<Datum>
+        cdr: Box<Datum>,
     },
     Abbreviation {
         kind: AbbreviationKind,
-        datum: Box<Datum>
+        datum: Box<Datum>,
     },
-    Vector(VecDeque<Datum>)
+    Vector(VecDeque<Datum>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -28,10 +28,10 @@ pub enum AbbreviationKind {
     Quote,
     Quasiquote,
     Comma,
-    CommaAt
+    CommaAt,
 }
 
-pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, ()>{
+pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, ()> {
     let x = stream.pop_front();
     if x.is_none() {
         return Ok(None);
@@ -52,42 +52,37 @@ pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, ()>{
 
             loop {
 
-                match try![ stream.get(0).ok_or(()) ] {
+                match try![stream.get(0).ok_or(())] {
                     &Token::Close if !is_pair && last.is_none() => {
                         stream.pop_front();
                         ret_val!(Datum::List(datums));
-                    },
+                    }
                     &Token::Close if is_pair && datums.len() > 0 && last.is_some() => {
                         stream.pop_front();
                         ret_val!(Datum::Pair {
-                            car: datums,
-                            cdr: last.unwrap()
-                        });
-                    },
+                                     car: datums,
+                                     cdr: last.unwrap(),
+                                 });
+                    }
                     &Token::Dot if is_pair == false => {
                         is_pair = true;
                         stream.pop_front();
-                    },
+                    }
                     // Close and Dot are errors in any other circumstances
                     // Also interrupted stream or any other token after finishing a pair
                     &Token::Close | &Token::Dot => return Err(()),
                     _ => {
-                        try![ ( !(last.is_some() && is_pair) ).result() ];
+                        try![(!(last.is_some() && is_pair)).result()];
                     }
                 }
 
-                try![parse_datum(stream)
-                    .and_then(|d| d.ok_or(()))
-                    .map(|d| {
-                        if is_pair {
-                            last = Some(Box::new(d));
-                        } else {
-                            datums.push_back(d);
-                        }
-                    })
-                ];
+                try![parse_datum(stream).and_then(|d| d.ok_or(())).map(|d| if is_pair {
+                                                                           last = Some(Box::new(d));
+                                                                       } else {
+                                                                           datums.push_back(d);
+                                                                       })];
             }
-        },
+        }
         Token::Comma | Token::CommaAt | Token::SingleQuote | Token::BackQuote => {
             // TO DO
             // This could be handled by a common type:
@@ -98,34 +93,35 @@ pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, ()>{
                 Token::CommaAt => AbbreviationKind::CommaAt,
                 Token::SingleQuote => AbbreviationKind::Quote,
                 Token::BackQuote => AbbreviationKind::Quasiquote,
-                _ => panic!()
+                _ => panic!(),
             };
 
-            parse_datum(stream).and_then(|d| d.ok_or(())).map(|d| {
-                Datum::Abbreviation {
-                    datum: Box::new(d),
-                    kind: abbr
-                }
-            }).map(Some)
-        },
+            parse_datum(stream)
+                .and_then(|d| d.ok_or(()))
+                .map(|d| {
+                         Datum::Abbreviation {
+                             datum: Box::new(d),
+                             kind: abbr,
+                         }
+                     })
+                .map(Some)
+        }
         Token::OpenVector => {
             let mut datums = VecDeque::new();
 
             loop {
 
-                if try![ stream.get(0).ok_or(()) ] == &Token::Close {
+                if try![stream.get(0).ok_or(())] == &Token::Close {
                     stream.pop_front();
                     break;
                 }
 
-                datums.push_back(try![
-                    parse_datum(stream).and_then(|d| d.ok_or(()))
-                ]);
+                datums.push_back(try![parse_datum(stream).and_then(|d| d.ok_or(()))]);
             }
 
             ok_some!(Datum::Vector(datums))
-        },
-        _ => Err(())
+        }
+        _ => Err(()),
     }
 }
 
@@ -133,7 +129,7 @@ impl Datum {
     pub fn list(self) -> Option<VecDeque<Datum>> {
         match self {
             Datum::List(l) => Some(l),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -143,7 +139,7 @@ mod test {
     use std::collections::VecDeque;
     use std::iter::FromIterator;
     use super::*;
-    use ::lexer::{Token};
+    use lexer::Token;
 
     pub fn tokens(t: &[Token]) -> VecDeque<Token> {
         let mut stream = VecDeque::new();
@@ -169,12 +165,14 @@ mod test {
     #[test]
     fn list_pair_test() {
         let s = "b".to_string();
-        let mut stream = tokens(&[
-            Token::Open, Token::Character('a'), Token::Dot, Token::String(s.clone()), Token::Close
-        ]);
+        let mut stream = tokens(&[Token::Open,
+                                  Token::Character('a'),
+                                  Token::Dot,
+                                  Token::String(s.clone()),
+                                  Token::Close]);
         let expected = Datum::Pair {
             car: vec_deque![Datum::Character('a')],
-            cdr: Box::new(Datum::String(s.clone()))
+            cdr: Box::new(Datum::String(s.clone())),
         };
         assert_eq!(parse_datum(&mut stream), ok_some!(expected));
     }
@@ -200,13 +198,12 @@ mod test {
 
     #[test]
     fn double_tail_list_test() {
-        let mut stream = tokens(&[
-            Token::Open,
-               Token::Character('a'),
-               Token::Dot,
-               Token::Boolean(true),
-               Token::String("foo".to_string()),
-            Token::Close]);
+        let mut stream = tokens(&[Token::Open,
+                                  Token::Character('a'),
+                                  Token::Dot,
+                                  Token::Boolean(true),
+                                  Token::String("foo".to_string()),
+                                  Token::Close]);
         assert!(parse_datum(&mut stream).is_err());
     }
 
@@ -214,26 +211,21 @@ mod test {
     fn vector_test() {
         let mut stream = tokens(&[Token::OpenVector, Token::Boolean(true), Token::Close]);
 
-        assert_eq!(parse_datum(&mut stream), ok_some!(Datum::Vector(vec_deque![Datum::Boolean(true)])));
+        assert_eq!(parse_datum(&mut stream),
+                   ok_some!(Datum::Vector(vec_deque![Datum::Boolean(true)])));
     }
 
     #[test]
     fn abbreviation_test() {
-        let mut stream = tokens(&[
-            Token::BackQuote,
-            Token::Open,
-                Token::Identifier("foo".to_string()),
-                Token::Identifier("bar".to_string()),
-            Token::Close
-        ]);
+        let mut stream = tokens(&[Token::BackQuote,
+                                  Token::Open,
+                                  Token::Identifier("foo".to_string()),
+                                  Token::Identifier("bar".to_string()),
+                                  Token::Close]);
         let expected = Datum::Abbreviation {
             kind: AbbreviationKind::Quasiquote,
-            datum: Box::new(Datum::List(
-                vec_deque![
-                    Datum::Symbol("foo".to_string()),
-                    Datum::Symbol("bar".to_string())
-                ]
-            ))
+            datum: Box::new(Datum::List(vec_deque![Datum::Symbol("foo".to_string()),
+                                                   Datum::Symbol("bar".to_string())])),
         };
         assert_eq!(parse_datum(&mut stream), ok_some!(expected));
     }

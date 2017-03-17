@@ -5,9 +5,11 @@ use super::{parse_prefix, parse_real, parse_suffix, parse_complex};
 #[test]
 fn prefix() {
     assert!(parse_prefix(&mut Chars::from_str("")).ok().unwrap() == (None, None));
-    assert!(parse_prefix(&mut Chars::from_str("#e")).ok().unwrap() == (Some(Exactness::Exact), None));
+    assert!(parse_prefix(&mut Chars::from_str("#e")).ok().unwrap() ==
+            (Some(Exactness::Exact), None));
     assert!(parse_prefix(&mut Chars::from_str("#O")).ok().unwrap() == (None, Some(Radix::Octal)));
-    assert!(parse_prefix(&mut Chars::from_str("#d#I")).ok().unwrap() == (Some(Exactness::Inexact), Some(Radix::Decimal)));
+    assert!(parse_prefix(&mut Chars::from_str("#d#I")).ok().unwrap() ==
+            (Some(Exactness::Inexact), Some(Radix::Decimal)));
     assert!(parse_prefix(&mut Chars::from_str("#d#")).is_err());
     assert!(parse_prefix(&mut Chars::from_str("#\\")).is_err());
 }
