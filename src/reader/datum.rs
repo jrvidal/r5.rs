@@ -52,47 +52,7 @@ pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, Reader
         Token::String(s) => ok_some!(Datum::String(s)),
         Token::Identifier(x) => ok_some!(Datum::Symbol(x)),
 
-        Token::Open => {
-            let mut datums = VecDeque::new();
-            let mut last = None;
-            let mut is_pair = false;
-
-            loop {
-
-                match stream.get(0).ok_or(ReaderError::UnexpectedEOF)? {
-                    &Token::Close if !is_pair && last.is_none() => {
-                        stream.pop_front();
-                        ret_val!(Datum::List(datums));
-                    }
-                    &Token::Close if is_pair && datums.len() > 0 && last.is_some() => {
-                        stream.pop_front();
-                        ret_val!(Datum::Pair {
-                                     car: datums,
-                                     cdr: last.unwrap(),
-                                 });
-                    }
-                    &Token::Dot if is_pair == false => {
-                        is_pair = true;
-                        stream.pop_front();
-                    }
-                    // Close and Dot are errors in any other circumstances
-                    // Also interrupted stream or any other token after finishing a pair
-                    &Token::Close | &Token::Dot => return Err(ReaderError::UnexpectedListToken),
-                    _ if last.is_some() && is_pair => return Err(ReaderError::UnexpectedListToken),
-                    _ => {},
-                }
-
-
-                match parse_datum(stream) {
-                    Ok(Some(d)) => if is_pair {
-                        last = Some(Box::new(d));
-                    } else {
-                        datums.push_back(d);
-                    },
-                    _ => return Err(ReaderError::UnexpectedEOF),
-                }
-            }
-        }
+        Token::Open => parse_list_datum(stream),
         Token::Comma | Token::CommaAt | Token::SingleQuote | Token::BackQuote => {
             // TO DO
             // This could be handled by a common type:
@@ -103,18 +63,14 @@ pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, Reader
                 Token::CommaAt => AbbreviationKind::CommaAt,
                 Token::SingleQuote => AbbreviationKind::Quote,
                 Token::BackQuote => AbbreviationKind::Quasiquote,
-                _ => panic!(),
+                _ => unreachable!(),
             };
 
-            parse_datum(stream)
-                .and_then(|d| d.ok_or(ReaderError::UnexpectedEOF))
-                .map(|d| {
-                         Datum::Abbreviation {
-                             datum: Box::new(d),
-                             kind: abbr,
-                         }
-                     })
-                .map(Some)
+            let datum = parse_datum(stream)?.ok_or(ReaderError::UnexpectedEOF)?;
+            Ok(Some(Datum::Abbreviation {
+                        datum: Box::new(datum),
+                        kind: abbr,
+                    }))
         }
         Token::OpenVector => {
             let mut datums = VecDeque::new();
@@ -126,12 +82,60 @@ pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, Reader
                     break;
                 }
 
-                datums.push_back(parse_datum(stream).and_then(|d| d.ok_or(ReaderError::UnexpectedEOF))?);
+                let datum = parse_datum(stream)?.unwrap();
+                datums.push_back(datum);
             }
 
             ok_some!(Datum::Vector(datums))
-        },
-        _ => { return Err(ReaderError::UnexpectedToken); }
+        }
+        _ => {
+            return Err(ReaderError::UnexpectedToken);
+        }
+    }
+}
+
+// Assumes a stream without the initial Open
+fn parse_list_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, ReaderError> {
+    let mut datums = VecDeque::new();
+    let mut last = None;
+    let mut is_pair = false;
+
+    loop {
+
+        match stream.get(0).ok_or(ReaderError::UnexpectedEOF)? {
+            &Token::Close if !is_pair && last.is_none() => {
+                stream.pop_front();
+                ret_val!(Datum::List(datums));
+            }
+            &Token::Close if is_pair && datums.len() > 0 && last.is_some() => {
+                stream.pop_front();
+                ret_val!(Datum::Pair {
+                             car: datums,
+                             cdr: last.unwrap(),
+                         });
+            }
+            &Token::Dot if is_pair == false => {
+                is_pair = true;
+                stream.pop_front();
+            }
+            // Close and Dot are errors in any other circumstances
+            // Also interrupted stream or any other token after finishing a pair
+            &Token::Close | &Token::Dot => return Err(ReaderError::UnexpectedListToken),
+            _ if last.is_some() && is_pair => return Err(ReaderError::UnexpectedListToken),
+            _ => {}
+        }
+
+
+        match parse_datum(stream) {
+            Ok(Some(d)) => {
+                if is_pair {
+                    last = Some(Box::new(d));
+                } else {
+                    datums.push_back(d);
+                }
+            }
+            _ => return Err(ReaderError::UnexpectedEOF),
+        }
     }
 }
 
