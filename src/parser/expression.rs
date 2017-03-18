@@ -24,7 +24,9 @@ pub enum Expression {
     Quotation(Datum),
     QuasiQuotation(Datum),
 
-    Vector(Vec<Expression>),
+    // Nope
+    // http://stackoverflow.com/questions/18641757/unquoted-vectors-in-r5rs-scheme
+    // Vector(Vec<Expression>),
 
     Call {
         operator: Box<Expression>,
@@ -207,9 +209,6 @@ pub fn parse_expression(d: Datum) -> Result<Expression, ParsingError> {
             let head = datums.pop_front().unwrap();
             (head, datums)
         }
-
-        // TODO: check this with somebody...
-        (Datum::Vector(datums), _) => return Ok(Expression::Vector(datums.into_expressions()?)),
 
         _ => {
             return Err(ParsingError::Illegal);
