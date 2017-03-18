@@ -43,7 +43,7 @@ pub struct TokenizerError {
 }
 
 #[derive(Debug, Clone)]
-enum TokenErrorClass {
+pub enum TokenErrorClass {
     InvalidPound,
     InvalidCharName,
     UnclosedString,
@@ -51,7 +51,16 @@ enum TokenErrorClass {
     UnfinishedChar,
     UnexpectedCharacter,
     InvalidScaping,
-    InvalidNumber,
+    UnfinishedNumber,
+    BadRadix,
+    BadCartesian,
+    BadDelimiter,
+    BadFraction,
+    BadSuffix,
+    BadDigit,
+    BadMarker,
+    BadDecimal,
+    EmptyNumber,
 }
 
 pub fn token_stream(chars: Vec<char>) -> Result<Vec<Token>, TokenizerError> {
@@ -119,7 +128,7 @@ pub fn next_token(mut stream: &mut Chars) -> Result<Option<Token>, TokenizerErro
                 (Some('.'), Some('0'...'9')) => {
                     match parse_number(&mut stream) {
                         Ok(nt) => ret_val!(Token::Number(nt)),
-                        Err(_) => ret_err!(InvalidNumber),
+                        Err(error) => { return Err(TokenizerError { error }); },
                     }
                 }
 

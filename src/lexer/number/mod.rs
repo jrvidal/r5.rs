@@ -1,4 +1,5 @@
 use super::chars::Chars;
+use super::TokenErrorClass;
 
 #[cfg(test)]
 mod test;
@@ -265,7 +266,7 @@ impl ComplexLiteral {
 type Prefix = (Option<Exactness>, Option<Radix>);
 
 // stream is guaranteed to be non-empty
-pub fn parse_number(mut stream: &mut Chars) -> Result<NumberToken, String> {
+pub fn parse_number(mut stream: &mut Chars) -> Result<NumberToken, TokenErrorClass> {
     parse_prefix(stream)
         .and_then(|(e, r)| parse_complex(stream, r).map(|n| (e, r, n)))
         .map(|(e, r, n)| {
@@ -277,7 +278,7 @@ pub fn parse_number(mut stream: &mut Chars) -> Result<NumberToken, String> {
         })
 }
 
-fn parse_prefix(mut stream: &mut Chars) -> Result<Prefix, String> {
+fn parse_prefix(mut stream: &mut Chars) -> Result<Prefix, TokenErrorClass> {
     let mut exactness = None;
     let mut radix = None;
 
@@ -285,7 +286,7 @@ fn parse_prefix(mut stream: &mut Chars) -> Result<Prefix, String> {
         match stream.peek(0) {
             Some('#') => {
                 match stream.peek(1) {
-                    None => return Err("no puedes".to_string()),
+                    None => return Err(TokenErrorClass::UnfinishedNumber),
                     Some(e) => {
                         match e {
                             'i' | 'e' if exactness.is_none() => {
@@ -294,7 +295,7 @@ fn parse_prefix(mut stream: &mut Chars) -> Result<Prefix, String> {
                             'b' | 'd' | 'x' | 'o' if radix.is_none() => {
                                 radix = Some(Radix::from(e))
                             }
-                            _ => return Err("no puedes".to_string()),
+                            _ => return Err(TokenErrorClass::BadRadix),
                         }
                     }
                 }
@@ -305,7 +306,7 @@ fn parse_prefix(mut stream: &mut Chars) -> Result<Prefix, String> {
     }
 }
 
-fn parse_complex(stream: &mut Chars, rad: Option<Radix>) -> Result<ComplexLiteral, String> {
+fn parse_complex(stream: &mut Chars, rad: Option<Radix>) -> Result<ComplexLiteral, TokenErrorClass> {
 
     let peek = stream.peek(0);
     let mut first_sign = None;
@@ -320,7 +321,7 @@ fn parse_complex(stream: &mut Chars, rad: Option<Radix>) -> Result<ComplexLitera
         if is_delimiter!(stream.peek(2)) {
             return Ok(ComplexLiteral::Cartesian(None, first_sign.unwrap(), None));
         } else {
-            return Err("bad delimiter".to_string());
+            return Err(TokenErrorClass::BadDelimiter);
         }
     }
 
@@ -358,7 +359,7 @@ fn parse_complex(stream: &mut Chars, rad: Option<Radix>) -> Result<ComplexLitera
         }
 
         _ if is_delimiter!(peek) => return Ok(ComplexLiteral::Real(first_sign, first_real)),
-        _ => return Err("bad delimiter".to_string()),
+        _ => return Err(TokenErrorClass::BadDelimiter),
     }
 
 
@@ -378,12 +379,12 @@ fn parse_complex(stream: &mut Chars, rad: Option<Radix>) -> Result<ComplexLitera
         if stream.peek(0) == Some('i') {
             stream.next();
         } else {
-            return Err("bad cartesian".to_string());
+            return Err(TokenErrorClass::BadCartesian);
         }
     }
 
     match stream.peek(0) {
-        _ if !is_delimiter!(stream.peek(0)) => return Err("bad delimiter".to_string()),
+        _ if !is_delimiter!(stream.peek(0)) => return Err(TokenErrorClass::BadDelimiter),
         _ => {
             if cartesian {
                 Ok(ComplexLiteral::Cartesian(Some((first_sign, first_real)),
@@ -397,7 +398,7 @@ fn parse_complex(stream: &mut Chars, rad: Option<Radix>) -> Result<ComplexLitera
 }
 
 // It does not err if last char is not a delimiter
-fn parse_real(mut stream: &mut Chars, r: Option<Radix>) -> Result<RealLiteral, String> {
+fn parse_real(mut stream: &mut Chars, r: Option<Radix>) -> Result<RealLiteral, TokenErrorClass> {
     #[derive(Debug, PartialEq)]
     enum Number {
         Int,
@@ -441,7 +442,7 @@ fn parse_real(mut stream: &mut Chars, r: Option<Radix>) -> Result<RealLiteral, S
                         digits = String::new();
                         pounds = 0;
                     }
-                    _ => return Err("bad fraction".to_string()),
+                    _ => return Err(TokenErrorClass::BadFraction),
                 }
             }
             Some('.') => {
@@ -450,7 +451,7 @@ fn parse_real(mut stream: &mut Chars, r: Option<Radix>) -> Result<RealLiteral, S
                         point = digits.len() + (pounds as usize);
                         num_type = Number::Dec;
                     }
-                    _ => return Err("bad decimal".to_string()),
+                    _ => return Err(TokenErrorClass::BadDecimal),
                 }
             }
 
@@ -467,13 +468,13 @@ fn parse_real(mut stream: &mut Chars, r: Option<Radix>) -> Result<RealLiteral, S
                                 suffix = sf;
                                 break;
                             }
-                            _ => return Err("bad suffix".to_string()),
+                            _ => return Err(TokenErrorClass::BadSuffix),
                         }
                     } else {
-                        return Err("bad marker".to_string());
+                        return Err(TokenErrorClass::BadMarker);
                     }
                 } else {
-                    return Err("bad digit".to_string());
+                    return Err(TokenErrorClass::BadDigit);
                 }
             }
 
@@ -484,7 +485,7 @@ fn parse_real(mut stream: &mut Chars, r: Option<Radix>) -> Result<RealLiteral, S
     }
 
     if digits.len() == 0 {
-        return Err("empty number".to_string());
+        return Err(TokenErrorClass::EmptyNumber);
     }
 
     Ok(match num_type {

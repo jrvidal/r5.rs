@@ -10,5 +10,6 @@ mod number;
 mod token_test;
 
 
+use self::token::TokenErrorClass;
 pub use self::token::{Token, token_stream};
 pub use self::number::NumberToken;
