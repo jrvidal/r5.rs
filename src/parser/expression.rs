@@ -24,6 +24,8 @@ pub enum Expression {
     Quotation(Datum),
     QuasiQuotation(Datum),
 
+    Vector(Vec<Expression>),
+
     Call {
         operator: Box<Expression>,
         operands: Vec<Expression>,
@@ -89,7 +91,7 @@ pub enum Derived {
         result: Vec<Expression>,
         commands: Vec<Expression>,
     },
-    Delay(Box<Expression>),
+    Delay(Box<Expression>), 
 
     // Quasiquotation is at the top level
 }
@@ -155,7 +157,30 @@ pub enum LambdaFormals {
     Rest(Vec<String>, String),
 }
 
-pub fn parse_expression(d: Datum) -> Result<Expression, ()> {
+#[derive(Debug, Eq, PartialEq)]
+pub enum ParsingError {
+    Illegal,
+}
+
+macro_rules! check {
+    ($check:expr, $err:expr) => (
+        if !$check {
+            return Err($err);
+        }
+    )
+}
+
+macro_rules! let_expr {
+    ($type:ident, $details:expr) => (
+        {
+
+            let (bindings, body) = $details?;
+            Ok(Expression::Derived(Derived::$type { bindings, body }))
+        }
+    )
+}
+
+pub fn parse_expression(d: Datum) -> Result<Expression, ParsingError> {
     // Simple cases
     let (head, mut datums) = match symbol_type(d) {
         (Datum::Symbol(s), Symbol::Variable) => return Ok(Expression::Variable(s)),
@@ -178,12 +203,19 @@ pub fn parse_expression(d: Datum) -> Result<Expression, ()> {
 
         // Delegate
         (Datum::List(mut datums), _) => {
-            try!((datums.len() > 0).result());
+            check![datums.len() > 0, ParsingError::Illegal];
             let head = datums.pop_front().unwrap();
             (head, datums)
         }
 
-        _ => return Err(()),
+        // TODO: check this with somebody...
+        (Datum::Vector(datums), _) => return Ok(Expression::Vector(datums.into_expressions()?)),
+
+        _ => {
+            return Err(ParsingError::Illegal);
+        }
+
+        // _ => return Err(ParsingError::Illegal),
     };
 
     let symbol = &match keyword_name(head.clone()) {
@@ -201,22 +233,22 @@ pub fn parse_expression(d: Datum) -> Result<Expression, ()> {
         // If
         (keywords::IF, 2) |
         (keywords::IF, 3) => {
-            datums.into_expressions().map(|mut exprs| {
-                let (test, consequent, alternate) = {
-                    let last = exprs.pop();
-                    let next_to_last = exprs.pop().unwrap();
-                    if exprs.len() == 0 {
-                        (next_to_last, last.unwrap(), None)
-                    } else {
-                        (exprs.pop().unwrap(), next_to_last, last)
-                    }
-                };
-                Expression::Conditional {
-                    test: Box::new(test),
-                    consequent: Box::new(consequent),
-                    alternate: alternate.map(Box::new),
+            let mut exprs = datums.into_expressions()?;
+            let (test, consequent, alternate) = {
+                let last = exprs.pop();
+                let next_to_last = exprs.pop().unwrap();
+                if exprs.len() == 0 {
+                    (next_to_last, last.unwrap(), None)
+                } else {
+                    (exprs.pop().unwrap(), next_to_last, last)
                 }
-            })
+            };
+            let conditional = Expression::Conditional {
+                test: Box::new(test),
+                consequent: Box::new(consequent),
+                alternate: alternate.map(Box::new),
+            };
+            Ok(conditional)
         }
         // Assignment
         (keywords::SET_BANG, 2) => {
@@ -229,7 +261,7 @@ pub fn parse_expression(d: Datum) -> Result<Expression, ()> {
                            expression: Box::new(expr),
                        })
                 }
-                _ => Err(()),
+                _ => Err(ParsingError::Illegal),
             }
         }
 
@@ -237,50 +269,49 @@ pub fn parse_expression(d: Datum) -> Result<Expression, ()> {
         (keywords::LAMBDA, l) if l >= 2 => return parse_lambda_exp(datums),
 
         (keywords::COND, l) if l >= 1 => {
-            let else_expressions = parse_else_clause(&mut datums);
+            let else_expressions = parse_else_clause(&mut datums)?;
 
-            let cond_clauses = datums.into_iter()
+            let mut clauses = datums.into_iter()
                 .map(parse_cond_clause_exp)
-                .collect::<Result<Vec<CondClause>, ()>>();
+                .collect::<Result<Vec<CondClause>, ParsingError>>()?;
 
-            (cond_clauses, else_expressions)
-                .result()
-                .map(|(mut clauses, else_exprs)| match else_exprs {
-                         Some((commands, expr)) => {
-                             Derived::CondElse {
-                                 clauses: clauses,
-                                 else_commands: commands,
-                                 else_expression: expr,
-                             }
-                         }
-                         None => {
-                    let head = clauses.remove(0);
+            let derived = match else_expressions {
+                Some((else_commands, else_expression)) => {
+                    Derived::CondElse {
+                        clauses,
+                        else_commands,
+                        else_expression,
+                    }
+                }
+                None => {
+                    let head_clause = clauses.remove(0);
                     Derived::Cond {
-                        head_clause: head,
+                        head_clause,
                         tail_clauses: clauses,
                     }
                 }
-                     })
-                .map(Expression::Derived)
+            };
+
+            Ok(Expression::Derived(derived))
         }
         (keywords::CASE, l) if l >= 2 => {
-            let key = Box::new(try![parse_expression(datums.pop_front().unwrap())]);
-            let else_expressions = parse_else_clause(&mut datums);
+            let key = Box::new(parse_expression(datums.pop_front().unwrap())?);
 
-            let case_clauses = datums.into_iter().map(parse_case_clause_exp).collect();
+            let else_expressions = parse_else_clause(&mut datums)?;
+            let mut clauses = datums.into_iter()
+                .map(parse_case_clause_exp)
+                .collect::<Result<_, _>>()?;
 
-            (case_clauses, else_expressions)
-                .result()
-                .map(|(mut clauses, else_exprs)| match else_exprs {
-                         Some((commands, expr)) => {
-                             Derived::CaseElse {
-                                 key: key,
-                                 clauses: clauses,
-                                 else_commands: commands,
-                                 else_expression: expr,
-                             }
-                         }
-                         None => {
+            let derived = match else_expressions {
+                Some((commands, expr)) => {
+                    Derived::CaseElse {
+                        key: key,
+                        clauses: clauses,
+                        else_commands: commands,
+                        else_expression: expr,
+                    }
+                }
+                None => {
                     let head = clauses.remove(0);
                     Derived::Case {
                         key: key,
@@ -288,82 +319,61 @@ pub fn parse_expression(d: Datum) -> Result<Expression, ()> {
                         tail_clauses: clauses,
                     }
                 }
-                     })
-                .map(Expression::Derived)
+
+            };
+
+            Ok(Expression::Derived(derived))
         }
         (keywords::LET, l) if l >= 2 => {
-            match symbol_type(datums.pop_front().unwrap()) {
-                    (Datum::Symbol(s), Symbol::Variable) => {
-                        parse_let_exp(datums).map(|details| {
-                            Derived::NamedLet {
-                                variable: s,
-                                bindings: details.0,
-                                body: details.1,
-                            }
-                        })
-                    }
-                    (d, _) => {
-                        datums.insert(0, d);
-                        parse_let_exp(datums).map(|details| {
-                                                      Derived::Let {
-                                                          bindings: details.0,
-                                                          body: details.1,
-                                                      }
-                                                  })
+            let derived = match symbol_type(datums.pop_front().unwrap()) {
+                (Datum::Symbol(s), Symbol::Variable) => {
+                    let (bindings, body) = parse_let_exp(datums)?;
+                    Derived::NamedLet {
+                        variable: s,
+                        bindings,
+                        body,
                     }
                 }
-                .map(Expression::Derived)
+                (d, _) => {
+                    datums.insert(0, d);
+                    return let_expr![Let, parse_let_exp(datums)];
+                }
+            };
+            Ok(Expression::Derived(derived))
         }
-        (keywords::LETREC, l) if l >= 2 => {
-            parse_let_exp(datums)
-                .map(|details| {
-                         Derived::LetRec {
-                             bindings: details.0,
-                             body: details.1,
-                         }
-                     })
-                .map(Expression::Derived)
-        }
-        (keywords::LET_STAR, l) if l >= 2 => {
-            parse_let_exp(datums)
-                .map(|details| {
-                         Derived::LetStar {
-                             bindings: details.0,
-                             body: details.1,
-                         }
-                     })
-                .map(Expression::Derived)
-        }
+        (keywords::LETREC, l) if l >= 2 => let_expr![LetRec, parse_let_exp(datums)],
+        (keywords::LET_STAR, l) if l >= 2 => let_expr![LetStar, parse_let_exp(datums)],
         (keywords::DO, l) if l >= 2 => {
-            let specs = try![datums.pop_front()
-                                 .unwrap()
-                                 .list()
-                                 .ok_or(())
-                                 .and_then(|dats| {
-                                               dats.into_iter().map(parse_iteration_spec).collect()
-                                           })];
+            let iterations = datums.pop_front()
+                .unwrap()
+                .list()
+                .ok_or(ParsingError::Illegal)?
+                .into_iter()
+                .map(parse_iteration_spec)
+                .collect::<Result<_, _>>()?;
 
-            let mut list = try![datums.pop_front()
-                                    .unwrap()
-                                    .list()
-                                    .ok_or(())];
-            try![(list.len() > 0).result()];
+            let mut list = datums.pop_front()
+                .unwrap()
+                .list()
+                .ok_or(ParsingError::Illegal)?;
+
+            check![list.len() > 0, ParsingError::Illegal];
+
             let test = list.pop_front()
                 .map(parse_expression)
                 .unwrap()
-                .map(Box::new);
-            let do_result = list.into_expressions();
+                .map(Box::new)?;
 
-            let commands = datums.into_expressions();
+            let result = list.into_expressions()?;
+            let commands = datums.into_expressions()?;
+            let derived = Derived::Do {
+                test,
+                result,
+                commands,
+                iterations,
+            };
 
-            (test, do_result, commands).result().map(|(test_exp, do_res_exp, comms)| {
-                Expression::Derived(Derived::Do {
-                                        iterations: specs,
-                                        test: test_exp,
-                                        result: do_res_exp,
-                                        commands: comms,
-                                    })
-            })
+            Ok(Expression::Derived(derived))
 
         }
         (keywords::AND, _) => datums.into_expressions().map(Derived::And).map(Expression::Derived),
@@ -371,13 +381,13 @@ pub fn parse_expression(d: Datum) -> Result<Expression, ()> {
         (keywords::OR, _) => datums.into_expressions().map(Derived::Or).map(Expression::Derived),
 
         (keywords::BEGIN, l) if l >= 2 => {
-            datums.into_expressions().map(|mut exprs| {
-                let expression = exprs.pop().unwrap();
-                Expression::Derived(Derived::Begin {
-                                        commands: exprs,
-                                        expression: Box::new(expression),
-                                    })
-            })
+            let mut commands = datums.into_expressions()?;
+            let expression = Box::new(commands.pop().unwrap());
+            let derived = Derived::Begin {
+                commands,
+                expression,
+            };
+            Ok(Expression::Derived(derived))
         }
         (keywords::DELAY, 1) => {
             parse_expression(datums.pop_front().unwrap())
@@ -385,7 +395,7 @@ pub fn parse_expression(d: Datum) -> Result<Expression, ()> {
                 .map(Derived::Delay)
                 .map(Expression::Derived)
         }
-        _ => return Err(()),
+        _ => return Err(ParsingError::Illegal),
     }
 }
 
@@ -394,7 +404,7 @@ pub fn parse_expression(d: Datum) -> Result<Expression, ()> {
 // Subexpressions
 //
 fn parse_else_clause(datums: &mut VecDeque<Datum>)
-                     -> Result<Option<(Vec<Expression>, Box<Expression>)>, ()> {
+                     -> Result<Option<(Vec<Expression>, Box<Expression>)>, ParsingError> {
     let mut else_clause = match datums.back().cloned() {
         Some(Datum::List(l)) => {
             if l.len() > 0 {
@@ -406,270 +416,273 @@ fn parse_else_clause(datums: &mut VecDeque<Datum>)
         _ => return Ok(None),
     };
 
-    match else_clause.pop_front().map(keyword_name).unwrap() {
+    match keyword_name(else_clause.pop_front().unwrap()) {
         Some(ref s) if &s[..] == keywords::ELSE => {}
         _ => return Ok(None),
     }
 
     datums.pop_back();
 
-    try![(else_clause.len() > 0).result()];
+    check![(else_clause.len() > 0), ParsingError::Illegal];
 
-    else_clause.into_expressions()
-        .map(|mut exprs| {
-                 let main = exprs.pop().unwrap();
-                 (exprs, Box::new(main))
-             })
-        .map(Some)
+    let mut exprs = else_clause.into_expressions()?;
+    let main = exprs.pop().unwrap();
+    Ok(Some((exprs, Box::new(main))))
 }
 
-fn parse_cond_clause_exp(datum: Datum) -> Result<CondClause, ()> {
-    let mut list = try![datum.list().ok_or(())];
+fn parse_cond_clause_exp(datum: Datum) -> Result<CondClause, ParsingError> {
+    let mut list = datum.list().ok_or(ParsingError::Illegal)?;
 
-    try![(list.len() > 0).result()];
+    check![(list.len() > 0), ParsingError::Illegal];
 
-    let test = try![list.pop_front()
-                        .map(parse_expression)
-                        .unwrap()
-                        .map(Box::new)];
+    let test = list.pop_front()
+        .map(parse_expression)
+        .unwrap()
+        .map(Box::new)?;
 
-    match (list.get(0).cloned().map(keyword_name), list.len()) {
+    let clause = match (list.get(0).cloned().map(keyword_name), list.len()) {
         (Some(Some(ref s)), 2) if s == keywords::ARROW => {
-            list.pop_back()
+            let recipient = list.pop_back()
                 .map(parse_expression)
-                .unwrap()
-                .map(|exp| {
-                         CondClause::Arrow {
-                             test: test,
-                             recipient: Box::new(exp),
-                         }
-                     })
+                .unwrap()?;
+            CondClause::Arrow {
+                test: test,
+                recipient: Box::new(recipient),
+            }
         }
         _ => {
-            list.into_expressions().map(|exprs| {
-                                            CondClause::Normal {
-                                                test: test,
-                                                expressions: exprs,
-                                            }
-                                        })
+            let expressions = list.into_expressions()?;
+            CondClause::Normal {
+                test,
+                expressions,
+            }
         }
-    }
+    };
+
+    Ok(clause)
 }
 
-fn parse_case_clause_exp(datum: Datum) -> Result<CaseClause, ()> {
-    let mut list = try![datum.list().ok_or(())];
+fn parse_case_clause_exp(datum: Datum) -> Result<CaseClause, ParsingError> {
+    let mut list = datum.list().ok_or(ParsingError::Illegal)?;
 
-    try![(list.len() >= 2).result()];
+    check![(list.len() >= 2), ParsingError::Illegal];
 
-    let datums_list = try![list.pop_front()
-                               .unwrap()
-                               .list()
-                               .ok_or(())];
+    let datums = list.pop_front()
+        .unwrap()
+        .list()
+        .ok_or(ParsingError::Illegal)?;
 
-    list.into_expressions().map(|mut exprs| {
-        let expression = exprs.pop().unwrap();
-        CaseClause {
-            datums: datums_list,
-            expression: Box::new(expression),
-            commands: exprs,
-        }
-    })
+    let mut commands = list.into_expressions()?;
+    let expression = commands.pop().unwrap();
+
+    let clause = CaseClause {
+        datums,
+        commands,
+        expression: Box::new(expression),
+    };
+
+    Ok(clause)
 }
 
 // panics unless datums.len() >= 1
-fn parse_let_exp(mut datums: VecDeque<Datum>) -> Result<(Vec<Binding>, Body), ()> {
-    let binding_list = try![datums.pop_front()
-                                .unwrap()
-                                .list()
-                                .ok_or(())];
-    let body = parse_body(datums);
+fn parse_let_exp(mut datums: VecDeque<Datum>) -> Result<(Vec<Binding>, Body), ParsingError> {
+    let binding_list = datums.pop_front()
+        .unwrap()
+        .list()
+        .ok_or(ParsingError::Illegal)?;
+
+    let body = parse_body(datums)?;
+
     let bindings = binding_list.into_iter()
         .map(|b| {
-            let mut pair = try![b.list().ok_or(())];
-            try![(pair.len() == 2).result()];
+            let mut pair = b.list().ok_or(ParsingError::Illegal)?;
+            check![(pair.len() == 2), ParsingError::Illegal];
 
-            let head = pair.pop_front().unwrap();
-            let expression = pair.pop_front().unwrap();
+            let variable = parse_variable(pair.pop_front().unwrap())?;
+            let init = parse_expression(pair.pop_front().unwrap())?;
 
-            (parse_variable(head), parse_expression(expression)).result().map(|(var, exp)| {
-                                                                                  Binding {
-                    variable: var,
-                    init: Box::new(exp)
-                }
-                                                                              })
+            let binding = Binding {
+                variable,
+                init: Box::new(init),
+            };
+            Ok(binding)
         })
-        .collect();
+        .collect::<Result<_, _>>()?;
 
-    (bindings, body).result()
+
+    Ok((bindings, body))
 }
 
-fn parse_call_exp(operator: Datum, operands: VecDeque<Datum>) -> Result<Expression, ()> {
-    (parse_expression(operator), operands.into_expressions()).result().map(|(exp, exprs)| {
-        Expression::Call {
-            operator: Box::new(exp),
-            operands: exprs,
-        }
-    })
+fn parse_call_exp(operator_d: Datum,
+                  operands_d: VecDeque<Datum>)
+                  -> Result<Expression, ParsingError> {
+    let operator = Box::new(parse_expression(operator_d)?);
+    let operands = operands_d.into_expressions()?;
+    let call = Expression::Call {
+        operator,
+        operands,
+    };
+    Ok(call)
 }
 
-fn parse_lambda_exp(mut datums: VecDeque<Datum>) -> Result<Expression, ()> {
-    let formals = datums.pop_front().unwrap();
-
-    (parse_lambda_formals_exp(formals), parse_body(datums)).result().map(|(parsed_formals,
-                                                                           body)| {
-        Expression::Lambda {
-            formals: parsed_formals,
-            body: body,
-        }
-    })
+fn parse_lambda_exp(mut datums: VecDeque<Datum>) -> Result<Expression, ParsingError> {
+    let formal_datums = datums.pop_front().unwrap();
+    let formals = parse_lambda_formals_exp(formal_datums)?;
+    let body = parse_body(datums)?;
+    let lambda = Expression::Lambda { formals, body };
+    Ok(lambda)
 }
 
-fn parse_body(mut datums: VecDeque<Datum>) -> Result<Body, ()> {
+fn parse_body(mut datums: VecDeque<Datum>) -> Result<Body, ParsingError> {
     let definitions = parse_definitions(&mut datums);
 
-    if datums.len() == 0 {
-        return Err(());
-    }
+    check![datums.len() > 0, ParsingError::Illegal];
 
-    datums.into_expressions().map(|mut exprs| {
-        let expression = exprs.pop().unwrap();
-        Body {
-            definitions: definitions,
-            commands: exprs,
-            expression: Box::new(expression),
-        }
-    })
+    let mut commands = datums.into_expressions()?;
+    let expression = commands.pop().unwrap();
+    let body = Body {
+        commands,
+        definitions,
+        expression: Box::new(expression),
+    };
+
+    Ok(body)
 }
 
-fn parse_definition(datum: Datum) -> Result<Definition, ()> {
-    let mut list = try![datum.list().ok_or(())];
+fn parse_definition(datum: Datum) -> Result<Definition, ParsingError> {
+    let mut list = datum.list().ok_or(ParsingError::Illegal)?;
 
-    try![(list.len() > 0).result()];
+    check![list.len() > 0, ParsingError::Illegal];
 
-    let symbol = try![keyword_name(list.pop_front().unwrap()).ok_or(())];
+    let symbol = keyword_name(list.pop_front().unwrap()).ok_or(ParsingError::Illegal)?;
 
     match &symbol[..] {
         keywords::BEGIN => {
             list.into_iter()
                 .map(parse_definition)
-                .collect::<Result<Vec<Definition>, ()>>()
+                .collect::<Result<_, _>>()
                 .map(Definition::Begin)
         }
 
         keywords::DEFINE if list.len() >= 2 => {
-            match {
-                      let formals = list.pop_front().map(parse_lambda_formals_exp).unwrap();
-                      (formals, list.len())
-                  } {
-                (Ok(LambdaFormals::VarArgs(s)), 1) => {
-                    list.pop_front()
+            let formals = list.pop_front().map(parse_lambda_formals_exp).unwrap();
+            let definition = match (formals, list.len()) {
+                (Ok(LambdaFormals::VarArgs(variable)), 1) => {
+                    let expression = list.pop_front()
                         .map(parse_expression)
-                        .unwrap()
-                        .map(|exp| {
-                                 Definition::Define {
-                                     variable: s,
-                                     expression: Box::new(exp),
-                                 }
-                             })
+                        .unwrap()?;
+
+                    Definition::Define {
+                        variable,
+                        expression: Box::new(expression),
+                    }
                 }
                 (Ok(LambdaFormals::List(mut args)), _) => {
-                    try![(args.len() > 0).result()];
+                    check![args.len() > 0, ParsingError::Illegal];
 
-                    let var = args.remove(0);
-                    parse_body(list).map(|body| {
-                        Definition::DefineLambda {
-                            variable: var,
-                            formals: LambdaFormals::List(args),
-                            body: body,
-                        }
-                    })
+                    let variable = args.remove(0);
+                    let body = parse_body(list)?;
+
+                    Definition::DefineLambda {
+                        variable,
+                        body,
+                        formals: LambdaFormals::List(args),
+                    }
                 }
                 (Ok(LambdaFormals::Rest(mut args, rest)), _) => {
-                    parse_body(list).map(|body| {
-                        let (var, formals) = {
-                            let v = args.remove(0);
-                            (v,
-                             if args.len() == 0 {
-                                 LambdaFormals::VarArgs(rest)
-                             } else {
-                                 LambdaFormals::Rest(args, rest)
-                             })
-                        };
-                        Definition::DefineLambda {
-                            variable: var,
-                            formals: formals,
-                            body: body,
-                        }
-                    })
+                    let body = parse_body(list)?;
+                    let variable = args.remove(0);
+                    let formals = if args.len() == 0 {
+                        LambdaFormals::VarArgs(rest)
+                    } else {
+                        LambdaFormals::Rest(args, rest)
+                    };
+                    Definition::DefineLambda {
+                        variable,
+                        formals,
+                        body,
+                    }
                 }
-                _ => Err(()),
+                _ => return Err(ParsingError::Illegal),
 
-            }
+            };
+            Ok(definition)
         }
-        _ => Err(()),
+        _ => Err(ParsingError::Illegal),
     }
 }
 
-fn parse_lambda_formals_exp(datum: Datum) -> Result<LambdaFormals, ()> {
+fn parse_lambda_formals_exp(datum: Datum) -> Result<LambdaFormals, ParsingError> {
     match symbol_type(datum) {
         (Datum::List(l), _) => l.into_variables().map(LambdaFormals::List),
         (Datum::Pair { car, cdr }, _) => {
-            (car.into_variables(), parse_variable(*cdr)).result().map(|(vars, rest)| {
-                                                                          LambdaFormals::Rest(vars,
-                                                                                              rest)
-                                                                      })
+            let vars = car.into_variables()?;
+            let rest = parse_variable(*cdr)?;
+            let formals = LambdaFormals::Rest(vars, rest);
+            Ok(formals)
         }
         (Datum::Symbol(s), Symbol::Variable) => Ok(LambdaFormals::VarArgs(s)),
-        _ => Err(()),
+        _ => Err(ParsingError::Illegal),
     }
 }
 
 fn parse_definitions(datums: &mut VecDeque<Datum>) -> Vec<Definition> {
     let mut definitions = vec![];
 
-    while let Ok(def) = datums.get(0)
-              .cloned()
-              .ok_or(())
-              .and_then(parse_definition) {
-        definitions.push(def);
-        datums.pop_front();
+    loop {
+        let maybe_def = datums.get(0)
+            .cloned()
+            .ok_or(ParsingError::Illegal)
+            .and_then(parse_definition);
+
+        if let Ok(def) = maybe_def {
+            definitions.push(def);
+            datums.pop_front();
+        } else {
+            break;
+        }
     }
 
     definitions
 }
 
-fn parse_variable(datum: Datum) -> Result<String, ()> {
-    parse_expression(datum).and_then(|exp| if let Expression::Variable(s) = exp {
-                                         Ok(s)
-                                     } else {
-                                         Err(())
-                                     })
+fn parse_variable(datum: Datum) -> Result<String, ParsingError> {
+    if let Expression::Variable(s) = parse_expression(datum)? {
+        Ok(s)
+    } else {
+        Err(ParsingError::Illegal)
+    }
 }
 
-fn parse_iteration_spec(datum: Datum) -> Result<IterationSpec, ()> {
-    let mut list = try![datum.list().ok_or(())];
-    try![(list.len() == 2 || list.len() == 3).result()];
+fn parse_iteration_spec(datum: Datum) -> Result<IterationSpec, ParsingError> {
+    let mut list = datum.list().ok_or(ParsingError::Illegal)?;
+    check![list.len() == 2 || list.len() == 3, ParsingError::Illegal];
 
-    let variable = list.pop_front().map(parse_variable).unwrap();
+    let variable = list.pop_front()
+        .map(parse_variable)
+        .unwrap()?;
+
     let init = list.pop_front()
         .map(parse_expression)
         .unwrap()
-        .map(Box::new);
-    let step =
-        list.pop_front().map_or(Ok(None),
-                                |dat| parse_expression(dat).map(Box::new).map(Some));
+        .map(Box::new)?;
 
-    (variable, init, step).result().map(|(var, init_exp, step_exp)| {
-        IterationSpec {
-            variable: var,
-            init: init_exp,
-            step: step_exp,
-        }
-    })
+    let step = match list.pop_front() {
+        Some(d) => Some(Box::new(parse_expression(d)?)),
+        None => None,
+    };
+
+
+    let spec = IterationSpec {
+        variable,
+        init,
+        step,
+    };
+    Ok(spec)
 }
 
 // TO DO: does this method really take 1 datum? The grammar suggests so.
-fn parse_quasiquotation(datum: Datum) -> Result<Expression, ()> {
+fn parse_quasiquotation(datum: Datum) -> Result<Expression, ParsingError> {
     panic!("unimplemented: parse quasiquotation expressions");
 }
 
@@ -704,30 +717,30 @@ fn keyword_name(d: Datum) -> Option<String> {
 }
 
 trait IntoHelper {
-    fn into_expressions(self) -> Result<Vec<Expression>, ()>;
-    fn into_variables(self) -> Result<Vec<String>, ()>;
-    // fn into_keyword_list(self, keyword: &str) -> Result<Vec<Expression>, ()>;
+    fn into_expressions(self) -> Result<Vec<Expression>, ParsingError>;
+    fn into_variables(self) -> Result<Vec<String>, ParsingError>;
+    // fn into_keyword_list(self, keyword: &str) -> Result<Vec<Expression>, ParsingError>;
 }
 
 impl IntoHelper for VecDeque<Datum> {
-    fn into_expressions(self) -> Result<Vec<Expression>, ()> {
+    fn into_expressions(self) -> Result<Vec<Expression>, ParsingError> {
         self.into_iter().map(parse_expression).collect()
     }
 
-    fn into_variables(self) -> Result<Vec<String>, ()> {
+    fn into_variables(self) -> Result<Vec<String>, ParsingError> {
         self.into_iter().map(parse_variable).collect()
     }
 
-    // fn into_keyword_list(mut self, keyword: &str) -> Result<Vec<Expression>, ()> {
+    // fn into_keyword_list(mut self, keyword: &str) -> Result<Vec<Expression>, ParsingError> {
     //     if self.len() == 0 {
-    //         return Err(());
+    //         return Err(ParsingError::Illegal);
     //     }
     //     match symbol_type(self[0].clone()) {
     //         (Datum::Symbol(ref s), Symbol::Keyword) if s == keyword => {
     //             self.pop_front();
     //             self.into_expressions()
     //         },
-    //         _ => Err(())
+    //         _ => Err(ParsingError::Illegal)
     //     }
     // }
 }
