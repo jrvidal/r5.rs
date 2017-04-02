@@ -8,33 +8,33 @@ use std::borrow::Borrow;
 use std::hash::Hash;
 
 pub type Shared<T> = Rc<RefCell<T>>;
-pub type Heap = GcHeap<RefObject>;
-pub type GcObject = GenericGcObject<RefObject>;
-// pub struct GcObject(GenericGcObject<RefObject>);
-pub type GcRef<'a> = GenericGcRef<'a, RefObject>;
-// pub struct GcRef<'a>(GenericGcRef<'a, RefObject>);
+pub type Heap = GcHeap<Reference>;
+pub type GcObject = GenericGcObject<Reference>;
+// pub struct GcObject(GenericGcObject<Reference>);
+pub type GcRef<'a> = GenericGcRef<'a, Reference>;
+// pub struct GcRef<'a>(GenericGcRef<'a, Reference>);
 
 #[derive(Debug, Clone)]
 pub enum Object {
-    ValueObject(ValueObject),
-    RefObject(GcObject),
+    Scalar(Scalar),
+    Reference(GcObject),
 }
 
 #[derive(Debug)]
-pub enum RefObject {
+pub enum Reference {
     Pair { car: Object, cdr: Object },
     String(String),
     Vector(Vec<Object>),
     Procedure {
-        body: Box<Body>,
-        formals: LambdaFormals,
+        // body: Box<Body>,
+        // formals: LambdaFormals,
         environment: Environment,
     },
 }
 
 // TO DO: ports?
 #[derive(Clone, Debug)]
-pub enum ValueObject {
+pub enum Scalar {
     Boolean(bool),
     Number,
     Character(char),
@@ -101,28 +101,28 @@ impl Heap {
         GcHeap::general_new()
     }
 
-    pub fn insert_ref(&mut self, obj: RefObject) -> Object {
-        Object::RefObject(self.insert(obj))
+    pub fn insert_ref(&mut self, obj: Reference) -> Object {
+        Object::Reference(self.insert(obj))
     }
 }
 
 
 impl Object {
-    // pub fn new_ref(obj: RefObject, h: &mut Heap) -> Object {
-    //     Object::RefObject(GcObject(h.insert(obj)))
+    // pub fn new_ref(obj: Reference, h: &mut Heap) -> Object {
+    //     Object::Reference(GcObject(h.insert(obj)))
     // }
     pub fn to_bool(&self) -> bool {
         match *self {
-            Object::ValueObject(ValueObject::Boolean(false)) => false,
+            Object::Scalar(Scalar::Boolean(false)) => false,
             _ => true,
         }
     }
 
     pub fn to_repl(&self) -> String {
         let is_pair = match *self {
-            Object::RefObject(ref shared) => {
+            Object::Reference(ref shared) => {
                 match *shared.borrow() {
-                    RefObject::Pair { .. } => true,
+                    Reference::Pair { .. } => true,
                     _ => false,
                 }
             }
@@ -134,19 +134,19 @@ impl Object {
         }
 
         match *self {
-            Object::ValueObject(ValueObject::Boolean(true)) => "#t".to_string(),
-            Object::ValueObject(ValueObject::Boolean(false)) => "#f".to_string(),
-            Object::ValueObject(ValueObject::Number) => "<number>".to_string(),
-            Object::ValueObject(ValueObject::Character(' ')) => "#\\space".to_string(),
-            Object::ValueObject(ValueObject::Character('\n')) => "#\\newline".to_string(),
-            Object::ValueObject(ValueObject::Character(c)) => "#\\".to_string() + &c.to_string(),
-            Object::ValueObject(ValueObject::Symbol(ref s)) => s.clone(),
-            Object::ValueObject(ValueObject::EmptyList) => "()".to_string(),
-            Object::ValueObject(ValueObject::NoValue) => "".to_string(),
-            Object::RefObject(ref shared) => {
+            Object::Scalar(Scalar::Boolean(true)) => "#t".to_string(),
+            Object::Scalar(Scalar::Boolean(false)) => "#f".to_string(),
+            Object::Scalar(Scalar::Number) => "<number>".to_string(),
+            Object::Scalar(Scalar::Character(' ')) => "#\\space".to_string(),
+            Object::Scalar(Scalar::Character('\n')) => "#\\newline".to_string(),
+            Object::Scalar(Scalar::Character(c)) => "#\\".to_string() + &c.to_string(),
+            Object::Scalar(Scalar::Symbol(ref s)) => s.clone(),
+            Object::Scalar(Scalar::EmptyList) => "()".to_string(),
+            Object::Scalar(Scalar::NoValue) => "".to_string(),
+            Object::Reference(ref shared) => {
                 match *shared.borrow() {
-                    RefObject::Procedure { .. } => "<procedure>".to_string(),
-                    RefObject::String(ref s) => "\"".to_string() + s + "\"",
+                    Reference::Procedure { .. } => "<procedure>".to_string(),
+                    Reference::String(ref s) => "\"".to_string() + s + "\"",
                     _ => "<unimplemented>".to_string(),
                 }
             }
@@ -156,10 +156,10 @@ impl Object {
 
 fn pair_to_repl(object: &Object) -> (bool, String) {
     match *object {
-        Object::ValueObject(ValueObject::EmptyList) => return (true, "".to_string()),
-        Object::RefObject(ref shared) => {
+        Object::Scalar(Scalar::EmptyList) => return (true, "".to_string()),
+        Object::Reference(ref shared) => {
             match *shared.borrow() {
-                RefObject::Pair { ref car, ref cdr } => {
+                Reference::Pair { ref car, ref cdr } => {
                     let (is_list, s) = pair_to_repl(cdr);
                     let result = car.to_repl() +
                                  if is_list {
@@ -240,16 +240,16 @@ impl InnerEnv {
 
 pub fn make_list(mut objects: Vec<Object>, heap: &mut Heap) -> Object {
     if objects.len() == 0 {
-        return Object::ValueObject(ValueObject::EmptyList);
+        return Object::Scalar(Scalar::EmptyList);
     }
 
-    let mut last_pair = heap.insert_ref(RefObject::Pair {
+    let mut last_pair = heap.insert_ref(Reference::Pair {
                                             car: objects.pop().unwrap(),
-                                            cdr: Object::ValueObject(ValueObject::EmptyList),
+                                            cdr: Object::Scalar(Scalar::EmptyList),
                                         });
 
     for obj in objects.into_iter().rev() {
-        last_pair = heap.insert_ref(RefObject::Pair {
+        last_pair = heap.insert_ref(Reference::Pair {
                                         car: obj,
                                         cdr: last_pair,
                                     });
@@ -260,14 +260,14 @@ pub fn make_list(mut objects: Vec<Object>, heap: &mut Heap) -> Object {
 
 pub fn from_datum(datum: &Datum, heap: &mut Heap) -> Object {
     match *datum {
-        Datum::Boolean(b) => Object::ValueObject(ValueObject::Boolean(b)),
-        Datum::Number(_) => Object::ValueObject(ValueObject::Number),
-        Datum::Character(c) => Object::ValueObject(ValueObject::Character(c)),
-        Datum::String(ref s) => heap.insert_ref(RefObject::String(s.clone())),
-        Datum::Symbol(ref s) => Object::ValueObject(ValueObject::Symbol(s.clone())),
+        Datum::Boolean(b) => Object::Scalar(Scalar::Boolean(b)),
+        Datum::Number(_) => Object::Scalar(Scalar::Number),
+        Datum::Character(c) => Object::Scalar(Scalar::Character(c)),
+        Datum::String(ref s) => heap.insert_ref(Reference::String(s.clone())),
+        Datum::Symbol(ref s) => Object::Scalar(Scalar::Symbol(s.clone())),
         Datum::List(ref datums) => {
             if datums.len() == 0 {
-                return Object::ValueObject(ValueObject::EmptyList);
+                return Object::Scalar(Scalar::EmptyList);
             }
 
             make_list(datums.iter().map(|dat| from_datum(dat, heap)).collect(),
@@ -275,19 +275,19 @@ pub fn from_datum(datum: &Datum, heap: &mut Heap) -> Object {
         }
         Datum::Vector(ref datums) => {
             let objects = datums.iter().map(|dat| from_datum(dat, heap)).collect();
-            heap.insert_ref(RefObject::Vector(objects))
+            heap.insert_ref(Reference::Vector(objects))
         }
         Datum::Pair { ref car, ref cdr } => {
             let last_cdr = from_datum(cdr, heap);
             let last_car = from_datum(car.back().unwrap(), heap);
-            let mut result = heap.insert_ref(RefObject::Pair {
+            let mut result = heap.insert_ref(Reference::Pair {
                                                  car: last_car,
                                                  cdr: last_cdr,
                                              });
 
             for dat in car.iter().rev().skip(1) {
                 let local_car = from_datum(dat, heap);
-                result = heap.insert_ref(RefObject::Pair {
+                result = heap.insert_ref(Reference::Pair {
                                              car: local_car,
                                              cdr: result,
                                          });
@@ -298,8 +298,8 @@ pub fn from_datum(datum: &Datum, heap: &mut Heap) -> Object {
         Datum::Abbreviation { kind: AbbreviationKind::Quote, ref datum } => {
             let obj = from_datum(datum, heap);
             let cdr = make_list(vec![obj], heap);
-            heap.insert_ref(RefObject::Pair {
-                                car: Object::ValueObject(ValueObject::Symbol("quote".to_string())),
+            heap.insert_ref(Reference::Pair {
+                                car: Object::Scalar(Scalar::Symbol("quote".to_string())),
                                 cdr: cdr,
                             })
         }
