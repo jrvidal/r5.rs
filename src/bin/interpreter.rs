@@ -1,22 +1,17 @@
 extern crate r5rs;
 extern crate gc;
 
-use gc::Trace;
 use std::io::{stdin, stdout, Write};
 
-// use r5rs::values::*;
-use r5rs::parser::*;
 use r5rs::reader::*;
 use r5rs::lexer::*;
-use r5rs::interpret::*;
+use r5rs::interpreter::*;
 use r5rs::compiler::*;
 
 fn main() {
     let mut buffer = String::new();
     let mut chars;
-    let mut environment = null_env();
-    // let mut heap = Heap::new();
-    // let env_gc = heap.insert_env(environment);
+    let environment = null_env();
 
     loop {
         buffer.clear();
@@ -56,43 +51,21 @@ fn main() {
             }
         };
 
-        // println!("datum: {:?}", datum);
-        let expression = match parse_expression(datum) {
-            Ok(exp) => exp,
-            Err(_) => {
+
+        let bytecode = match compile_expression(datum) {
+            Some(bytecode) => bytecode,
+            None => {
                 println!("Invalid expression");
                 continue;
             }
         };
 
-
-        let (bytecode, entry) = compile(expression);
-
         println!("Code:\n{:?}", bytecode);
-        let result = exec(bytecode, environment.clone(), entry);
+        let result = exec(bytecode, environment.clone());
 
         match result {
-            Ok(Value::Scalar(ref s)) => println!("{:?}", s),
-            x @ _ => println!("{:?}", x),
-            // Ok(Value::Reference(ref r)) => if let Ok(ref v) = r.borrow() {
-            //     let ref_value : &Reference = &*v;
-            //     println!("{:?}", ref_value);
-            // } else {
-            //     println!("heap error");
-            // },
+            Ok(v) => println!("{}", v.to_repl()),
             Err(_) => println!("execution error"),
         };
-
-        // println!("{:?}", expression);
-
-    //     let object = match eval(&expression, &mut environment, &mut heap) {
-    //         Ok(obj) => obj,
-    //         Err(e) => {
-    //             println!("{:?}", e);
-    //             continue;
-    //         }
-    //     };
-
-    //     println!("{}", object.to_repl());
     }
 }

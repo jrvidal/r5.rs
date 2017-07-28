@@ -3,7 +3,7 @@ extern crate r5rs;
 use std::io::{stdin, stdout, Write};
 
 // use r5rs::values::*;
-use r5rs::parser::*;
+// use r5rs::parser::*;
 use r5rs::reader::*;
 use r5rs::lexer::*;
 use r5rs::compiler::*;
@@ -52,16 +52,16 @@ fn main() {
             }
         };
 
-        // println!("datum: {:?}", datum);
-        let expression = match parse_expression(datum) {
-            Ok(exp) => exp,
-            Err(_) => {
-                println!("Invalid expression");
-                continue;
-            }
-        };
+        // // println!("datum: {:?}", datum);
+        // let expression = match parse_expression(datum) {
+        //     Ok(exp) => exp,
+        //     Err(_) => {
+        //         println!("Invalid expression");
+        //         continue;
+        //     }
+        // };
 
-        println!("{:?}", compile(expression));
+        println!("{:?}", compile_expression(datum));
 
     }
 }

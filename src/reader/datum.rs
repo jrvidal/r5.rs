@@ -1,6 +1,5 @@
 use std::collections::VecDeque;
-use lexer::{Token, NumberToken};
-use helpers::*;
+use lexer::{NumberToken, Token};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Datum {
@@ -68,9 +67,9 @@ pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, Reader
 
             let datum = parse_datum(stream)?.ok_or(ReaderError::UnexpectedEOF)?;
             Ok(Some(Datum::Abbreviation {
-                        datum: Box::new(datum),
-                        kind: abbr,
-                    }))
+                datum: Box::new(datum),
+                kind: abbr,
+            }))
         }
         Token::OpenVector => {
             let mut datums = VecDeque::new();
@@ -110,9 +109,9 @@ fn parse_list_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, Reade
             &Token::Close if is_pair && datums.len() > 0 && last.is_some() => {
                 stream.pop_front();
                 ret_val!(Datum::Pair {
-                             car: datums,
-                             cdr: last.unwrap(),
-                         });
+                    car: datums,
+                    cdr: last.unwrap(),
+                });
             }
             &Token::Dot if is_pair == false => {
                 is_pair = true;
@@ -127,13 +126,11 @@ fn parse_list_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, Reade
 
 
         match parse_datum(stream) {
-            Ok(Some(d)) => {
-                if is_pair {
-                    last = Some(Box::new(d));
-                } else {
-                    datums.push_back(d);
-                }
-            }
+            Ok(Some(d)) => if is_pair {
+                last = Some(Box::new(d));
+            } else {
+                datums.push_back(d);
+            },
             _ => return Err(ReaderError::UnexpectedEOF),
         }
     }
@@ -144,6 +141,51 @@ impl Datum {
         match self {
             Datum::List(l) => Some(l),
             _ => None,
+        }
+    }
+}
+
+use std::fmt;
+impl fmt::Display for Datum {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match *self {
+            Datum::List(ref ds) => {
+                fmt.write_str("(")?;
+                for d in ds {
+                    d.fmt(fmt)?;
+                }
+                fmt.write_str(")")
+            }
+            Datum::Vector(ref ds) => {
+                fmt.write_str("#(")?;
+                for d in ds {
+                    d.fmt(fmt)?;
+                }
+                fmt.write_str(")")
+            }
+            Datum::Boolean(b) => fmt.write_str(if b { "#t" } else { "#f" }),
+            Datum::Pair { ref car, ref cdr } => {
+                fmt.write_str("(")?;
+                for d in car {
+                    d.fmt(fmt)?;
+                    fmt.write_str(" ")?;
+                }
+                fmt.write_str(". ")?;
+                cdr.fmt(fmt)?;
+                fmt.write_str(")")
+            }
+            Datum::Symbol(ref s) => fmt.write_str(&s[..]),
+            Datum::Abbreviation {
+                kind: AbbreviationKind::Quote,
+                ref datum,
+            } => {
+                fmt.write_str("'")?;
+                datum.fmt(fmt)
+            }
+            Datum::Character(' ') => fmt.write_str("#\\space"),
+            Datum::Character('\n') => fmt.write_str("#\\newline"),
+            Datum::Character(c) => fmt.write_fmt(format_args!("#\\{}", c)),
+            _ => fmt.write_str("<datum>"),
         }
     }
 }
@@ -180,11 +222,13 @@ mod test {
     #[test]
     fn list_pair_test() {
         let s = "b".to_string();
-        let mut stream = tokens(&[Token::Open,
-                                  Token::Character('a'),
-                                  Token::Dot,
-                                  Token::String(s.clone()),
-                                  Token::Close]);
+        let mut stream = tokens(&[
+            Token::Open,
+            Token::Character('a'),
+            Token::Dot,
+            Token::String(s.clone()),
+            Token::Close,
+        ]);
         let expected = Datum::Pair {
             car: vec_deque![Datum::Character('a')],
             cdr: Box::new(Datum::String(s.clone())),
@@ -201,24 +245,36 @@ mod test {
 
     #[test]
     fn empty_head_list_test() {
-        let mut stream = tokens(&[Token::Open, Token::Dot, Token::Character('a'), Token::Close]);
+        let mut stream = tokens(&[
+            Token::Open,
+            Token::Dot,
+            Token::Character('a'),
+            Token::Close,
+        ]);
         assert_eq!(parse_datum(&mut stream), Err(UnexpectedListToken));
     }
 
     #[test]
     fn empty_tail_list_test() {
-        let mut stream = tokens(&[Token::Open, Token::Character('a'), Token::Dot, Token::Close]);
+        let mut stream = tokens(&[
+            Token::Open,
+            Token::Character('a'),
+            Token::Dot,
+            Token::Close,
+        ]);
         assert_eq!(parse_datum(&mut stream), Err(UnexpectedEOF));
     }
 
     #[test]
     fn double_tail_list_test() {
-        let mut stream = tokens(&[Token::Open,
-                                  Token::Character('a'),
-                                  Token::Dot,
-                                  Token::Boolean(true),
-                                  Token::String("foo".to_string()),
-                                  Token::Close]);
+        let mut stream = tokens(&[
+            Token::Open,
+            Token::Character('a'),
+            Token::Dot,
+            Token::Boolean(true),
+            Token::String("foo".to_string()),
+            Token::Close,
+        ]);
         assert!(parse_datum(&mut stream).is_err());
     }
 
@@ -226,21 +282,27 @@ mod test {
     fn vector_test() {
         let mut stream = tokens(&[Token::OpenVector, Token::Boolean(true), Token::Close]);
 
-        assert_eq!(parse_datum(&mut stream),
-                   ok_some!(Datum::Vector(vec_deque![Datum::Boolean(true)])));
+        assert_eq!(
+            parse_datum(&mut stream),
+            ok_some!(Datum::Vector(vec_deque![Datum::Boolean(true)]))
+        );
     }
 
     #[test]
     fn abbreviation_test() {
-        let mut stream = tokens(&[Token::BackQuote,
-                                  Token::Open,
-                                  Token::Identifier("foo".to_string()),
-                                  Token::Identifier("bar".to_string()),
-                                  Token::Close]);
+        let mut stream = tokens(&[
+            Token::BackQuote,
+            Token::Open,
+            Token::Identifier("foo".to_string()),
+            Token::Identifier("bar".to_string()),
+            Token::Close,
+        ]);
         let expected = Datum::Abbreviation {
             kind: AbbreviationKind::Quasiquote,
-            datum: Box::new(Datum::List(vec_deque![Datum::Symbol("foo".to_string()),
-                                                   Datum::Symbol("bar".to_string())])),
+            datum: Box::new(Datum::List(vec_deque![
+                Datum::Symbol("foo".to_string()),
+                Datum::Symbol("bar".to_string())
+            ])),
         };
         assert_eq!(parse_datum(&mut stream), ok_some!(expected));
     }
