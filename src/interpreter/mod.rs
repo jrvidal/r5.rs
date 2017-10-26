@@ -12,6 +12,7 @@ pub type GcShared<T> = Gc<GcCell<T>>;
 pub enum Value {
     Scalar(Scalar),
     String(CowString),
+    Number,
     Pair {
         car: GcShared<Value>,
         cdr: GcShared<Value>,
@@ -47,6 +48,7 @@ unsafe impl Trace for Value {
                 ref environment, ..
             } => mark(environment),
             Value::String(_) => {}
+            Value::Number => {}
         }
     });
 }
@@ -72,7 +74,7 @@ pub enum Scalar {
 
 impl Value {
     pub fn to_repl(&self) -> String {
-        println!("{:?}", self);
+        println!("to_repl: {:?}", self);
         match *self {
             Value::Scalar(Scalar::Nil) => "".to_owned(),
             Value::Scalar(Scalar::EmptyList) => "()".to_owned(),
@@ -295,7 +297,7 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
             }
 
         };
-        println!("pc {:?}, code: {:?}, stack: {:?}", pc, instruction, stack);
+        println!("pc {:?}\tcode: {:?}\n\t stack: {:?}", pc, instruction, stack);
         let mut next_pc = None;
 
         match *instruction {
@@ -316,6 +318,9 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
             }
             Instruction::String(ref s) => {
                 stack.push_front(Value::String(s.clone()));
+            }
+            Instruction::Number => {
+                stack.push_front(Value::Number);
             }
             Instruction::EmptyList => {
                 stack.push_front(Value::Scalar(Scalar::EmptyList));
@@ -429,10 +434,6 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
                     .get(var_name.clone())
                     .ok_or_else(|| ())?;
                 stack.push_front(value);
-            }
-            Instruction::SetVar(ref var_name) => {
-                let value = stack.pop_front().expect("set var");
-                current_env.borrow_mut().set(var_name.clone(), value);
             }
             Instruction::DefineVar(ref var_name) => {
                 let value = stack.pop_front().expect("set var");

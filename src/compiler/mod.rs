@@ -13,6 +13,7 @@ pub enum Instruction {
     Character(char),
     Boolean(bool),
     Symbol(ImmutableString),
+    Number,
     Nil,
     EmptyList,
     // ***

@@ -198,6 +198,15 @@ mod test {
     use lexer::Token;
     use self::ReaderError::*;
 
+    macro_rules! vec_deque {
+        ($( $x:expr ),*) => ({
+            let v = vec![$( $x ),*];
+            VecDeque::from_iter(v.into_iter())
+        });
+        // TO DO: WTF??
+        ($( $x:expr, )*) => (vec_deque![ $( $x ),* ]);
+    }
+
     pub fn tokens(t: &[Token]) -> VecDeque<Token> {
         let mut stream = VecDeque::new();
         for token in t.iter().cloned() {
