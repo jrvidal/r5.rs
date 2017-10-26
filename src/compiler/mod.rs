@@ -252,7 +252,7 @@ fn parse_expression_inner(d: Datum, symbolic: bool) -> Result<Vec<Instruction>, 
     };
     // Simple cases
     let mut datums = match matcher {
-        (Datum::Symbol(s), Symbol::Variable, true) => return simple_datum!(Symbol, s.into()),
+        (Datum::Symbol(s), _, true) => return simple_datum!(Symbol, s.into()),
         (Datum::Symbol(s), Symbol::Variable, false) => return simple_datum!(LoadVar, s.into()),
         // TO DO: why doesn't this work??
         // Datum::Symbol(s) if keywords::is_syntactic_keyword(&s) => {
