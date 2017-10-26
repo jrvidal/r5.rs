@@ -261,7 +261,7 @@ fn parse_expression_inner(d: Datum, symbolic: bool) -> Result<Vec<Instruction>, 
         (Datum::Boolean(b), ..) => return simple_datum![Boolean, b],
         (Datum::Character(c), ..) => return simple_datum![Character, c],
         (Datum::String(s), ..) => return simple_datum![String, s.into()],
-        // (Datum::Number(nt), _) => return Ok(Expression::Number(nt)),
+        (Datum::Number(_), ..) => return Ok(vec![Instruction::Number]),
         (
             Datum::Abbreviation {
                 kind: AbbreviationKind::Quote,
