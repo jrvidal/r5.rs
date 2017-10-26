@@ -78,16 +78,37 @@ impl Value {
         match *self {
             Value::Scalar(Scalar::Nil) => "".to_owned(),
             Value::Scalar(Scalar::EmptyList) => "()".to_owned(),
-            Value::Scalar(Scalar::Boolean(b)) => format!("{}", b),
-            Value::Scalar(Scalar::Character(c)) => format!("#\\{}", c),
+            Value::Scalar(Scalar::Boolean(b)) => if b { "#t".to_owned() } else { "#f".to_owned() },
+            Value::Scalar(Scalar::Character(c)) => {
+                let printed = match c {
+                    '\n' => "newline".to_owned(),
+                    ' ' => "space".to_owned(),
+                    c => format!("{}", c)
+                };
+
+                "#\\".to_owned() + &printed
+            },
             Value::Scalar(Scalar::Integer(n)) => format!("{}", n),
             Value::Scalar(Scalar::Symbol(ref s)) => format!("{}", *s),
-            Value::String(ref s) => s.into(),
+            Value::String(ref s) => "\"".to_owned() + &escape(s.into()) + "\"",
             Value::Procedure { .. } => "<procedure>".to_owned(),
             ref pair @ Value::Pair { .. } => format!("({})", pair_to_repl(&pair).1),
             ref v => format!("{:?}", v),
         }
     }
+}
+
+fn escape(s: String) -> String {
+    s.chars()
+        .flat_map(|c| {
+            match c {
+                '"' => vec!['\\', '"'],
+                '\\' => vec!['\\', '\\'],
+                c => vec![c]
+            }
+        })
+        .collect()
+
 }
 
 fn pair_to_repl(value: &Value) -> (bool, String) {
