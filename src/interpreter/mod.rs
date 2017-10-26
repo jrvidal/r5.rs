@@ -356,16 +356,26 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
                 };
                 stack.push_front(pair);
             }
-            Instruction::List(0) => {
+            // Stack in reverse order:
+            // a_n, ..., a_1, ...
+            Instruction::List(0, false) => {
                 stack.push_front(Value::Scalar(Scalar::EmptyList));
             }
-            Instruction::List(n) => {
-                let mut pair = Value::Pair {
-                    car: shared(stack.pop_front().unwrap()),
-                    cdr: shared(Value::Scalar(Scalar::EmptyList)),
+            Instruction::List(n, improper) => {
+                let cdr = if improper {
+                    stack.pop_front().unwrap()
+                } else {
+                    Value::Scalar(Scalar::EmptyList)
                 };
 
-                for _ in 0..n - 1 {
+                let mut pair = Value::Pair {
+                    car: shared(stack.pop_front().unwrap()),
+                    cdr: shared(cdr)
+                };
+
+                let rest = if improper { n } else { n - 1 };
+
+                for _ in 0..rest {
                     let val = stack.pop_front().unwrap();
                     pair = Value::Pair {
                         car: shared(val),

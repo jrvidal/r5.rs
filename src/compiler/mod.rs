@@ -36,8 +36,8 @@ pub enum Instruction {
     Lambda(Rc<Vec<Instruction>>),
     // Make pair from 2 pops and push
     Pair,
-    // Make list from n pops and push
-    List(usize),
+    // Make list from n pops and push. Bool indicates improper list (+2 pops)
+    List(usize, bool),
     // ...
     Pop,
     // Load variable from environment
@@ -275,7 +275,7 @@ fn parse_expression_inner(d: Datum, symbolic: bool) -> Result<Vec<Instruction>, 
 
             return parsed.map(|mut ins| {
                 ins.insert(0, Instruction::Symbol(keywords::QUOTE.into()));
-                ins.push(Instruction::List(2));
+                ins.push(Instruction::List(2, false));
                 ins
             })
         },
@@ -295,7 +295,14 @@ fn parse_expression_inner(d: Datum, symbolic: bool) -> Result<Vec<Instruction>, 
         } else {
             let n = datums.len();
             let mut instructions = datums.compiled(true)?;
-            instructions.push(Instruction::List(n));
+            instructions.push(Instruction::List(n, false));
+            return Ok(instructions);
+        },
+        (Datum::Pair{ car, cdr }, _, true) => {
+            let n = car.len() - 1;
+            let mut instructions = car.compiled(true)?;
+            instructions.extend(parse_expression_inner(*cdr, true)?);
+            instructions.push(Instruction::List(n, true));
             return Ok(instructions);
         },
         _ => return Err(ParsingError::Illegal),
