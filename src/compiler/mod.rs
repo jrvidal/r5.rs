@@ -268,9 +268,16 @@ fn parse_expression_inner(d: Datum, symbolic: bool) -> Result<Vec<Instruction>, 
                 datum,
             },
             _,
-            false,
-        ) => match datum {
-            _ => return parse_expression_inner(*datum, true),
+            symb,
+        ) => {
+            let parsed = parse_expression_inner(*datum, true);
+            if !symb { return parsed }
+
+            return parsed.map(|mut ins| {
+                ins.insert(0, Instruction::Symbol(keywords::QUOTE.into()));
+                ins.push(Instruction::List(2));
+                ins
+            })
         },
 
         (
