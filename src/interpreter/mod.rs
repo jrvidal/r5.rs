@@ -361,8 +361,12 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
                 };
                 stack.push_front(procedure);
             }
-            Instruction::Call => {
-                // TODO: tail call
+            // Stack:                End stack:
+            // * n_of_args           * n_of_args
+            // * proc                * arg1
+            // * arg1                * ...
+            // * ...                 * return_record
+            Instruction::Call(tail) => {
                 let val = stack.swap_remove_front(1).ok_or_else(|| ())?;
                 let (code, environment) = if let Value::Procedure { code, environment } = val {
                     (code, environment)
@@ -370,27 +374,29 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
                     return Err(());
                 };
 
-                let n_of_args = if let &Value::Scalar(Scalar::Integer(ref n)) =
-                    stack.get(0).ok_or_else(|| ())?
-                {
-                    *n as usize
-                } else {
-                    return Err(());
-                };
 
                 let environment = environment.new();
 
-                let return_record = Value::ReturnRecord {
-                    environment: current_env,
-                    address: pc + 1,
-                    code: compiled_code.clone(),
-                };
-                stack.insert(n_of_args + 1, return_record);
+                if !tail {
+                    let n_of_args = if let &Value::Scalar(Scalar::Integer(ref n)) =
+                        stack.get(0).ok_or_else(|| ())?
+                    {
+                        *n as usize
+                    } else {
+                        return Err(());
+                    };
+
+                    let return_record = Value::ReturnRecord {
+                        environment: current_env,
+                        address: pc + 1,
+                        code: compiled_code.clone(),
+                    };
+                    stack.insert(n_of_args + 1, return_record);
+                }
 
                 current_env = environment;
                 next_compiled_code = Some(Some(code));
                 next_pc = Some(0);
-
             }
             Instruction::Arity(n_of_args, rest) => {
                 let args_passed = match stack.pop_front().ok_or_else(|| ())? {
@@ -398,10 +404,10 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
                     _ => return Err(()),
                 };
 
-                if !rest && n_of_args == args_passed {
+                if !rest && n_of_args > 0 && n_of_args == args_passed {
                     pc += 1;
                     continue;
-                } else if !rest || (n_of_args != 0 && args_passed < n_of_args) {
+                 } else if n_of_args > 0 && args_passed < n_of_args {
                     return Err(());
                 }
 
@@ -466,6 +472,9 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
             Instruction::Branch(n) => {
                 next_pc = Some(pc + n);
             }
+            // Stack:
+            // * ret_value
+            // * return_record
             Instruction::Ret => {
                 let return_record = stack.swap_remove_front(1).expect("return_record");
 

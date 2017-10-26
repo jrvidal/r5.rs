@@ -17,8 +17,8 @@ pub enum Instruction {
     Nil,
     EmptyList,
     // ***
-    // Call, save return environment
-    Call,
+    // Call(is_tail), save return environment if it's not tail
+    Call(bool),
     // Return, restore return environment
     Ret,
     // Check arity, load rest arguments
@@ -708,13 +708,12 @@ fn parse_call_exp(
         let mut vec: Vec<_> = operands_d.into_iter().collect();
         vec.reverse();
         vec.into_iter().collect()
-
     };
 
     let mut instructions = operands_d.compiled(false)?;
 
     instructions.push(Instruction::Integer(n_of_args as isize));
-    instructions.push(Instruction::Call);
+    instructions.push(Instruction::Call(false));
     Ok(instructions)
 }
 
