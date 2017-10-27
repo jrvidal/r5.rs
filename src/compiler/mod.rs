@@ -286,12 +286,11 @@ fn parse_expression_inner(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
             }
             instructions.push(Instruction::Vector(n));
             return Ok(instructions);
-        },
+        }
 
         // Delegate
         (_, Datum::List(datums)) => datums,
         _ => return Err(ParsingError::Illegal),
-
     };
 
     check![datums.len() > 0, ParsingError::Illegal];
@@ -498,8 +497,8 @@ fn parse_expression_inner(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
             let n_of_tests = tests.len();
             let length = tests
                 .iter()
-                .fold(0, |acc, test: &Vec<_>| acc + test.len() + 2) -
-                if n_of_tests > 0 { 1 } else { 0 };
+                .fold(0, |acc, test: &Vec<_>| acc + test.len() + 2)
+                - if n_of_tests > 0 { 1 } else { 0 };
 
             let mut instructions = vec![Instruction::Boolean(false)];
             let mut traveled = 0;
@@ -546,8 +545,8 @@ fn compile_quotation(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
             }
             instructions.push(Instruction::List(n, false));
             instructions
-        },
-        Datum::Pair{car, cdr} => {
+        }
+        Datum::Pair { car, cdr } => {
             let mut instructions = vec![];
             let n = car.len() - 1;
             for d in car.into_iter() {
@@ -556,7 +555,7 @@ fn compile_quotation(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
             instructions.extend(compile_quotation(*cdr)?);
             instructions.push(Instruction::List(n, true));
             instructions
-        },
+        }
         Datum::Abbreviation {
             kind: AbbreviationKind::Quote,
             datum,
@@ -565,9 +564,12 @@ fn compile_quotation(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
             instructions.insert(0, Instruction::Symbol(keywords::QUOTE.into()));
             instructions.push(Instruction::List(2, false));
             instructions
-        },
-        Datum::Abbreviation{ kind: AbbreviationKind::Quasiquote, .. } => panic!("todo quasiquote"),
-        d => parse_expression_inner(d)?
+        }
+        Datum::Abbreviation {
+            kind: AbbreviationKind::Quasiquote,
+            ..
+        } => panic!("todo quasiquote"),
+        d => parse_expression_inner(d)?,
     };
 
     Ok(instructions)
@@ -695,7 +697,6 @@ fn parse_let_exp(
             while let Some(def) = definitions.next_back() {
                 instructions.push(def);
             }
-
         }
         LetExp::LetStar => for (v, init) in bindings_list.into_iter() {
             instructions.push(Instruction::NewEnv);
@@ -732,7 +733,6 @@ fn parse_call_exp(
     operator_d: Datum,
     mut operands_d: VecDeque<Datum>,
 ) -> Result<Vec<Instruction>, ParsingError> {
-
     let n_of_args = operands_d.len();
     operands_d.push_front(operator_d);
 
@@ -810,8 +810,7 @@ fn parse_definition(datum: Datum) -> Result<Vec<Instruction>, ParsingError> {
 
     check![list.len() > 0, ParsingError::Illegal];
 
-    let symbol = keyword_name(list.pop_front().unwrap())
-        .ok_or(ParsingError::Illegal)?;
+    let symbol = keyword_name(list.pop_front().unwrap()).ok_or(ParsingError::Illegal)?;
 
     match &symbol[..] {
         keywords::BEGIN => {
@@ -828,8 +827,7 @@ fn parse_definition(datum: Datum) -> Result<Vec<Instruction>, ParsingError> {
             let formals = list.pop_front().map(parse_lambda_formals_exp).unwrap();
             let instructions = match (formals, list.len()) {
                 (Ok(LambdaFormals::VarArgs(variable)), 1) => {
-                    let mut instructions =
-                        parse_expression_inner(list.pop_front().unwrap())?;
+                    let mut instructions = parse_expression_inner(list.pop_front().unwrap())?;
                     instructions.push(Instruction::DefineVar(variable.into()));
                     instructions
                 }
@@ -852,7 +850,6 @@ fn parse_definition(datum: Datum) -> Result<Vec<Instruction>, ParsingError> {
                     instructions
                 }
                 _ => return Err(ParsingError::Illegal),
-
             };
             Ok(instructions)
         }
@@ -950,7 +947,7 @@ fn symbol_type(d: &Datum) -> Symbol {
         } else {
             Symbol::Variable
         },
-        _ => Symbol::None
+        _ => Symbol::None,
     }
 }
 
