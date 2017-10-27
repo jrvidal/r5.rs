@@ -13,6 +13,7 @@ pub enum Instruction {
     Character(char),
     Boolean(bool),
     Symbol(ImmutableString),
+    Vector(usize),
     Number,
     Nil,
     EmptyList,
@@ -237,23 +238,22 @@ enum LetExp {
 // }
 
 pub fn compile_expression(d: Datum) -> Option<Vec<Instruction>> {
-    parse_expression_inner(d, false).ok()
+    parse_expression_inner(d).ok()
 }
 
-fn parse_expression_inner(d: Datum, symbolic: bool) -> Result<Vec<Instruction>, ParsingError> {
+fn parse_expression_inner(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
     macro_rules! simple_datum {
         ($T:ident, $c:expr) => (
             Ok(vec![Instruction::$T($c)])
         )
     }
-    let matcher = {
-        let st = symbol_type(d);
-        (st.0, st.1, symbolic)
-    };
+    // let matcher = {
+    //     let st = symbol_type(d);
+    //     (st.0, st.1, symbolic)
+    // };
     // Simple cases
-    let mut datums = match matcher {
-        (Datum::Symbol(s), _, true) => return simple_datum!(Symbol, s.into()),
-        (Datum::Symbol(s), Symbol::Variable, false) => return simple_datum!(LoadVar, s.into()),
+    let mut datums = match symbol_type(d) {
+        (Datum::Symbol(s), Symbol::Variable) => return simple_datum!(LoadVar, s.into()),
         // TO DO: why doesn't this work??
         // Datum::Symbol(s) if keywords::is_syntactic_keyword(&s) => {
         //         ret_val!(Expression::Variable(s))
@@ -268,17 +268,7 @@ fn parse_expression_inner(d: Datum, symbolic: bool) -> Result<Vec<Instruction>, 
                 datum,
             },
             _,
-            symb,
-        ) => {
-            let parsed = parse_expression_inner(*datum, true);
-            if !symb { return parsed }
-
-            return parsed.map(|mut ins| {
-                ins.insert(0, Instruction::Symbol(keywords::QUOTE.into()));
-                ins.push(Instruction::List(2, false));
-                ins
-            })
-        },
+        ) => return compile_quotation(*datum),
 
         (
             Datum::Abbreviation {
@@ -287,24 +277,19 @@ fn parse_expression_inner(d: Datum, symbolic: bool) -> Result<Vec<Instruction>, 
             },
             ..
         ) => return parse_quasiquotation(*datum),
+        (Datum::Vector(datums), _) => {
+            let mut instructions = vec![];
+            let n = datums.len();
+
+            for d in datums {
+                instructions.extend(compile_quotation(d)?);
+            }
+            instructions.push(Instruction::Vector(n));
+            return Ok(instructions);
+        },
 
         // Delegate
-        (Datum::List(datums), _, false) => datums,
-        (Datum::List(datums), _, true) => if datums.len() == 0 {
-            return Ok(vec![Instruction::EmptyList]);
-        } else {
-            let n = datums.len();
-            let mut instructions = datums.compiled(true)?;
-            instructions.push(Instruction::List(n, false));
-            return Ok(instructions);
-        },
-        (Datum::Pair{ car, cdr }, _, true) => {
-            let n = car.len() - 1;
-            let mut instructions = car.compiled(true)?;
-            instructions.extend(parse_expression_inner(*cdr, true)?);
-            instructions.push(Instruction::List(n, true));
-            return Ok(instructions);
-        },
+        (Datum::List(datums), _) => datums,
         _ => return Err(ParsingError::Illegal),
 
     };
@@ -319,7 +304,7 @@ fn parse_expression_inner(d: Datum, symbolic: bool) -> Result<Vec<Instruction>, 
 
     match (&symbol[..], datums.len()) {
         // // Verbose quotations
-        (keywords::QUOTE, 1) => parse_expression_inner(datums.pop_front().unwrap(), true),
+        (keywords::QUOTE, 1) => compile_quotation(datums.pop_front().unwrap()),
         // // Verbose quasiquotations
         // (keywords::QUASIQUOTE, 1) => {
         //     Ok(datums.pop_front().map(Expression::QuasiQuotation).unwrap())
@@ -328,7 +313,7 @@ fn parse_expression_inner(d: Datum, symbolic: bool) -> Result<Vec<Instruction>, 
         (keywords::IF, 2) | (keywords::IF, 3) => {
             let mut exprs: Vec<Vec<_>> = datums
                 .into_iter()
-                .map(|d| parse_expression_inner(d, false))
+                .map(|d| parse_expression_inner(d))
                 .collect::<Result<_, _>>()?;
             let (test, consequent, alternate) = {
                 let last = exprs.pop();
@@ -358,7 +343,7 @@ fn parse_expression_inner(d: Datum, symbolic: bool) -> Result<Vec<Instruction>, 
         // // Assignment
         (keywords::SET_BANG, 2) => {
             let var = symbol_type(datums.pop_front().unwrap());
-            let parsed = parse_expression_inner(datums.pop_front().unwrap(), false);
+            let parsed = parse_expression_inner(datums.pop_front().unwrap());
             match (var.0, var.1, parsed) {
                 (Datum::Symbol(s), Symbol::Variable, Ok(mut instructions)) => {
                     instructions.push(Instruction::SetVar(s.into()));
@@ -478,7 +463,7 @@ fn parse_expression_inner(d: Datum, symbolic: bool) -> Result<Vec<Instruction>, 
             // <next>
             let tests: Vec<_> = datums
                 .into_iter()
-                .map(|d| parse_expression_inner(d, false))
+                .map(|d| parse_expression_inner(d))
                 .collect::<Result<_, _>>()?;
 
             let length = tests
@@ -506,7 +491,7 @@ fn parse_expression_inner(d: Datum, symbolic: bool) -> Result<Vec<Instruction>, 
         (keywords::OR, _) => {
             let tests: Vec<_> = datums
                 .into_iter()
-                .map(|d| parse_expression_inner(d, false))
+                .map(|d| parse_expression_inner(d))
                 .collect::<Result<_, _>>()?;
 
             let n_of_tests = tests.len();
@@ -553,6 +538,44 @@ fn parse_expression_inner(d: Datum, symbolic: bool) -> Result<Vec<Instruction>, 
     }
 }
 
+
+fn compile_quotation(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
+    let instructions = match d {
+        Datum::Symbol(s) => vec![Instruction::Symbol(s.into())],
+        Datum::List(datums) => {
+            let mut instructions = vec![];
+            let n = datums.len();
+            for d in datums.into_iter() {
+                instructions.extend(compile_quotation(d)?);
+            }
+            instructions.push(Instruction::List(n, false));
+            instructions
+        },
+        Datum::Pair{car, cdr} => {
+            let mut instructions = vec![];
+            let n = car.len() - 1;
+            for d in car.into_iter() {
+                instructions.extend(compile_quotation(d)?);
+            }
+            instructions.extend(compile_quotation(*cdr)?);
+            instructions.push(Instruction::List(n, true));
+            instructions
+        },
+        Datum::Abbreviation {
+            kind: AbbreviationKind::Quote,
+            datum,
+        } => {
+            let mut instructions = compile_quotation(*datum)?;
+            instructions.insert(0, Instruction::Symbol(keywords::QUOTE.into()));
+            instructions.push(Instruction::List(2, false));
+            instructions
+        },
+        Datum::Abbreviation{ kind: AbbreviationKind::Quasiquote, .. } => panic!("todo quasiquote"),
+        d => parse_expression_inner(d)?
+    };
+
+    Ok(instructions)
+}
 
 // //
 // // Subexpressions
@@ -652,7 +675,7 @@ fn parse_let_exp(
             check![(pair.len() == 2), ParsingError::Illegal];
 
             let variable = parse_variable(pair.pop_front().unwrap())?;
-            let init = parse_expression_inner(pair.pop_front().unwrap(), false)?;
+            let init = parse_expression_inner(pair.pop_front().unwrap())?;
 
             Ok((variable.into(), init))
         })
@@ -724,7 +747,7 @@ fn parse_call_exp(
         vec.into_iter().collect()
     };
 
-    let mut instructions = operands_d.compiled(false)?;
+    let mut instructions = operands_d.compiled()?;
 
     instructions.push(Instruction::Integer(n_of_args as isize));
     instructions.push(Instruction::Call(false));
@@ -771,7 +794,7 @@ fn parse_body(mut datums: VecDeque<Datum>) -> Result<Vec<Instruction>, ParsingEr
 
     let mut commands: Vec<Vec<_>> = datums
         .into_iter()
-        .map(|d| parse_expression_inner(d, false))
+        .map(|d| parse_expression_inner(d))
         .collect::<Result<_, _>>()?;
     let expression = commands.pop().unwrap();
 
@@ -798,7 +821,7 @@ fn parse_definition(datum: Datum) -> Result<Vec<Instruction>, ParsingError> {
         keywords::BEGIN => {
             let mut instructions = vec![];
             for d in list.into_iter() {
-                instructions.extend(parse_expression_inner(d, false)?);
+                instructions.extend(parse_expression_inner(d)?);
                 instructions.push(Instruction::Pop);
             }
             instructions.pop();
@@ -810,7 +833,7 @@ fn parse_definition(datum: Datum) -> Result<Vec<Instruction>, ParsingError> {
             let instructions = match (formals, list.len()) {
                 (Ok(LambdaFormals::VarArgs(variable)), 1) => {
                     let mut instructions =
-                        parse_expression_inner(list.pop_front().unwrap(), false)?;
+                        parse_expression_inner(list.pop_front().unwrap())?;
                     instructions.push(Instruction::DefineVar(variable.into()));
                     instructions
                 }
@@ -955,20 +978,20 @@ fn keyword_name(d: Datum) -> Option<String> {
 }
 
 trait CompilerHelper: Sized {
-    fn compiled(self, bool) -> Result<Vec<Instruction>, ParsingError>;
+    fn compiled(self) -> Result<Vec<Instruction>, ParsingError>;
     fn into_variables(self) -> Result<Vec<String>, ParsingError>;
 }
 
 impl CompilerHelper for VecDeque<Datum> {
-    fn compiled(mut self, symbolic: bool) -> Result<Vec<Instruction>, ParsingError> {
+    fn compiled(mut self) -> Result<Vec<Instruction>, ParsingError> {
         let mut acc = if let Some(d) = self.pop_front() {
-            parse_expression_inner(d, symbolic)?
+            parse_expression_inner(d)?
         } else {
             return Ok(vec![]);
         };
 
         for d in self.into_iter() {
-            acc.extend(parse_expression_inner(d, symbolic)?);
+            acc.extend(parse_expression_inner(d)?);
         }
 
         Ok(acc)

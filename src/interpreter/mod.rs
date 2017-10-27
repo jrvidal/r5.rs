@@ -17,6 +17,7 @@ pub enum Value {
         car: GcShared<Value>,
         cdr: GcShared<Value>,
     },
+    Vector(Vec<Value>),
     Procedure {
         code: Rc<Vec<Instruction>>,
         environment: GcShared<Environment>,
@@ -47,6 +48,11 @@ unsafe impl Trace for Value {
             Value::ReturnRecord {
                 ref environment, ..
             } => mark(environment),
+            Value::Vector(ref vals) => {
+                for v in vals.iter() {
+                    mark(v);
+                }
+            },
             Value::String(_) => {}
             Value::Number => {}
         }
@@ -92,6 +98,11 @@ impl Value {
             Value::Scalar(Scalar::Symbol(ref s)) => format!("{}", *s),
             Value::String(ref s) => "\"".to_owned() + &escape(s.into()) + "\"",
             Value::Procedure { .. } => "<procedure>".to_owned(),
+            Value::Vector(ref vals) => {
+                vals.iter()
+                    .fold("#(".into(), |acc : String, val| acc + &val.to_repl())
+                    + ")"
+            },
             ref pair @ Value::Pair { .. } => format!("({})", pair_to_repl(&pair).1),
             ref v => format!("{:?}", v),
         }
@@ -356,6 +367,13 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
                 };
                 stack.push_front(pair);
             }
+            Instruction::Vector(n) => {
+                let mut vector = vec![];
+                for _ in 0..n {
+                    vector.push(stack.pop_front().expect("vector entry"));
+                }
+                stack.push_front(Value::Vector(vector));
+            },
             // Stack in reverse order:
             // a_n, ..., a_1, ...
             Instruction::List(0, false) => {
