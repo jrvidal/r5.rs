@@ -252,32 +252,32 @@ fn parse_expression_inner(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
     //     (st.0, st.1, symbolic)
     // };
     // Simple cases
-    let mut datums = match symbol_type(d) {
-        (Datum::Symbol(s), Symbol::Variable) => return simple_datum!(LoadVar, s.into()),
+    let mut datums = match (symbol_type(&d), d) {
+        (Symbol::Variable, Datum::Symbol(s)) => return simple_datum!(LoadVar, s.into()),
         // TO DO: why doesn't this work??
         // Datum::Symbol(s) if keywords::is_syntactic_keyword(&s) => {
         //         ret_val!(Expression::Variable(s))
         // },
-        (Datum::Boolean(b), ..) => return simple_datum![Boolean, b],
-        (Datum::Character(c), ..) => return simple_datum![Character, c],
-        (Datum::String(s), ..) => return simple_datum![String, s.into()],
-        (Datum::Number(_), ..) => return Ok(vec![Instruction::Number]),
+        (_, Datum::Boolean(b)) => return simple_datum![Boolean, b],
+        (_, Datum::Character(c)) => return simple_datum![Character, c],
+        (_, Datum::String(s)) => return simple_datum![String, s.into()],
+        (_, Datum::Number(_)) => return Ok(vec![Instruction::Number]),
         (
+            _,
             Datum::Abbreviation {
                 kind: AbbreviationKind::Quote,
                 datum,
             },
-            _,
         ) => return compile_quotation(*datum),
 
         (
+            _,
             Datum::Abbreviation {
                 kind: AbbreviationKind::Quasiquote,
                 datum,
             },
-            ..
         ) => return parse_quasiquotation(*datum),
-        (Datum::Vector(datums), _) => {
+        (_, Datum::Vector(datums)) => {
             let mut instructions = vec![];
             let n = datums.len();
 
@@ -289,7 +289,7 @@ fn parse_expression_inner(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
         },
 
         // Delegate
-        (Datum::List(datums), _) => datums,
+        (_, Datum::List(datums)) => datums,
         _ => return Err(ParsingError::Illegal),
 
     };
@@ -340,11 +340,12 @@ fn parse_expression_inner(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
 
             Ok(instructions)
         }
-        // // Assignment
+        // Assignment
         (keywords::SET_BANG, 2) => {
-            let var = symbol_type(datums.pop_front().unwrap());
+            let d = datums.pop_front().unwrap();
+            let var = symbol_type(&d);
             let parsed = parse_expression_inner(datums.pop_front().unwrap());
-            match (var.0, var.1, parsed) {
+            match (d, var, parsed) {
                 (Datum::Symbol(s), Symbol::Variable, Ok(mut instructions)) => {
                     instructions.push(Instruction::SetVar(s.into()));
                     Ok(instructions)
@@ -413,7 +414,7 @@ fn parse_expression_inner(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
 
         //     Ok(Expression::Derived(derived))
         // }
-        (keywords::LET, l) if l >= 2 => match symbol_type_ref(&datums[0]) {
+        (keywords::LET, l) if l >= 2 => match symbol_type(&datums[0]) {
             Symbol::Variable => parse_let_exp(datums, LetExp::NamedLet),
             _ => parse_let_exp(datums, LetExp::Let),
         },
@@ -515,11 +516,6 @@ fn parse_expression_inner(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
             }
             Ok(instructions)
         }
-
-        // (keywords::OR, _) => datums
-        //     .into_expressions()
-        //     .map(Derived::Or)
-        //     .map(Expression::Derived),
 
         // (keywords::BEGIN, l) if l >= 2 => {
         //     let mut commands = datums.into_expressions()?;
@@ -865,15 +861,15 @@ fn parse_definition(datum: Datum) -> Result<Vec<Instruction>, ParsingError> {
 }
 
 fn parse_lambda_formals_exp(datum: Datum) -> Result<LambdaFormals, ParsingError> {
-    match symbol_type(datum) {
-        (Datum::List(l), _) => l.into_variables().map(LambdaFormals::List),
-        (Datum::Pair { car, cdr }, _) => {
+    match (symbol_type(&datum), datum) {
+        (_, Datum::List(l)) => l.into_variables().map(LambdaFormals::List),
+        (_, Datum::Pair { car, cdr }) => {
             let vars = car.into_variables()?;
             let rest = parse_variable(*cdr)?;
             let formals = LambdaFormals::Rest(vars, rest);
             Ok(formals)
         }
-        (Datum::Symbol(s), Symbol::Variable) => Ok(LambdaFormals::VarArgs(s)),
+        (Symbol::Variable, Datum::Symbol(s)) => Ok(LambdaFormals::VarArgs(s)),
         _ => Err(ParsingError::Illegal),
     }
 }
@@ -900,7 +896,7 @@ fn parse_definitions(datums: &mut VecDeque<Datum>) -> Vec<Vec<Instruction>> {
 }
 
 fn parse_variable(datum: Datum) -> Result<String, ParsingError> {
-    if let (Datum::Symbol(s), Symbol::Variable) = symbol_type(datum) {
+    if let (Symbol::Variable, Datum::Symbol(s)) = (symbol_type(&datum), datum) {
         Ok(s)
     } else {
         Err(ParsingError::Illegal)
@@ -947,32 +943,21 @@ enum Symbol {
     None,
 }
 
-fn symbol_type(d: Datum) -> (Datum, Symbol) {
-    match d {
-        Datum::Symbol(s) => if is_syntactic_keyword(&s[..]) {
-            (Datum::Symbol(s), Symbol::Keyword)
-        } else {
-            (Datum::Symbol(s), Symbol::Variable)
-        },
-        _ => (d, Symbol::None),
-    }
-}
-
-fn symbol_type_ref(d: &Datum) -> Symbol {
+fn symbol_type(d: &Datum) -> Symbol {
     match *d {
         Datum::Symbol(ref s) => if is_syntactic_keyword(&s[..]) {
             Symbol::Keyword
         } else {
             Symbol::Variable
         },
-        _ => Symbol::None,
+        _ => Symbol::None
     }
 }
 
 
 fn keyword_name(d: Datum) -> Option<String> {
-    match symbol_type(d) {
-        (Datum::Symbol(s), Symbol::Keyword) => Some(s),
+    match (symbol_type(&d), d) {
+        (Symbol::Keyword, Datum::Symbol(s)) => Some(s),
         _ => None,
     }
 }
@@ -999,8 +984,8 @@ impl CompilerHelper for VecDeque<Datum> {
 
     fn into_variables(self) -> Result<Vec<String>, ParsingError> {
         self.into_iter()
-            .map(|d| match symbol_type(d) {
-                (Datum::Symbol(s), Symbol::Variable) => Ok(s),
+            .map(|d| match (symbol_type(&d), d) {
+                (Symbol::Variable, Datum::Symbol(s)) => Ok(s),
                 _ => Err(ParsingError::Illegal),
             })
             .collect()
