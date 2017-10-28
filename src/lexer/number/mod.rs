@@ -14,7 +14,11 @@ pub struct NumberToken {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum ComplexLiteral {
-    Cartesian(Option<(Option<NumSign>, RealLiteral)>, NumSign, Option<RealLiteral>),
+    Cartesian(
+        Option<(Option<NumSign>, RealLiteral)>,
+        NumSign,
+        Option<RealLiteral>,
+    ),
     Polar(Option<NumSign>, RealLiteral, Option<NumSign>, RealLiteral),
     Real(Option<NumSign>, RealLiteral),
 }
@@ -147,7 +151,10 @@ impl RealLiteral {
         match *self {
             RealLiteral::Integer { ref digits, .. } => &digits,
             RealLiteral::Decimal { ref digits, .. } => &digits,
-            RealLiteral::Fraction { numerator: (ref digits, _), .. } => &digits,
+            RealLiteral::Fraction {
+                numerator: (ref digits, _),
+                ..
+            } => &digits,
         }
     }
     // REVISIT
@@ -156,7 +163,10 @@ impl RealLiteral {
         match *self {
             RealLiteral::Decimal { pounds, .. } => pounds,
             RealLiteral::Integer { pounds, .. } => pounds,
-            RealLiteral::Fraction { numerator: (_, pounds), .. } => pounds,
+            RealLiteral::Fraction {
+                numerator: (_, pounds),
+                ..
+            } => pounds,
         }
     }
 
@@ -181,12 +191,13 @@ impl RealLiteral {
     #[cfg(wtf)]
     fn num(&self) -> RealLiteral {
         match *self {
-            RealLiteral::Fraction { numerator: (ref digits, pounds), .. } => {
-                RealLiteral::Integer {
-                    pounds: pounds,
-                    digits: digits.clone(),
-                }
-            }
+            RealLiteral::Fraction {
+                numerator: (ref digits, pounds),
+                ..
+            } => RealLiteral::Integer {
+                pounds: pounds,
+                digits: digits.clone(),
+            },
             _ => panic!("Not a fraction"),
         }
     }
@@ -194,12 +205,13 @@ impl RealLiteral {
     #[cfg(test)]
     fn den(&self) -> RealLiteral {
         match *self {
-            RealLiteral::Fraction { denominator: (ref digits, pounds), .. } => {
-                RealLiteral::Integer {
-                    pounds: pounds,
-                    digits: digits.clone(),
-                }
-            }
+            RealLiteral::Fraction {
+                denominator: (ref digits, pounds),
+                ..
+            } => RealLiteral::Integer {
+                pounds: pounds,
+                digits: digits.clone(),
+            },
             _ => panic!("Not a fraction"),
         }
     }
@@ -266,7 +278,7 @@ impl ComplexLiteral {
 type Prefix = (Option<Exactness>, Option<Radix>);
 
 // stream is guaranteed to be non-empty
-pub fn parse_number(mut stream: &mut Chars) -> Result<NumberToken, TokenErrorClass> {
+pub fn parse_number(stream: &mut Chars) -> Result<NumberToken, TokenErrorClass> {
     parse_prefix(stream)
         .and_then(|(e, r)| parse_complex(stream, r).map(|n| (e, r, n)))
         .map(|(e, r, n)| {
@@ -278,36 +290,32 @@ pub fn parse_number(mut stream: &mut Chars) -> Result<NumberToken, TokenErrorCla
         })
 }
 
-fn parse_prefix(mut stream: &mut Chars) -> Result<Prefix, TokenErrorClass> {
+fn parse_prefix(stream: &mut Chars) -> Result<Prefix, TokenErrorClass> {
     let mut exactness = None;
     let mut radix = None;
 
     loop {
         match stream.peek(0) {
-            Some('#') => {
-                match stream.peek(1) {
-                    None => return Err(TokenErrorClass::UnfinishedNumber),
-                    Some(e) => {
-                        match e {
-                            'i' | 'e' if exactness.is_none() => {
-                                exactness = Some(Exactness::from(e));
-                            }
-                            'b' | 'd' | 'x' | 'o' if radix.is_none() => {
-                                radix = Some(Radix::from(e))
-                            }
-                            _ => return Err(TokenErrorClass::BadRadix),
-                        }
+            Some('#') => match stream.peek(1) {
+                None => return Err(TokenErrorClass::UnfinishedNumber),
+                Some(e) => match e {
+                    'i' | 'e' if exactness.is_none() => {
+                        exactness = Some(Exactness::from(e));
                     }
-                }
-            }
+                    'b' | 'd' | 'x' | 'o' if radix.is_none() => radix = Some(Radix::from(e)),
+                    _ => return Err(TokenErrorClass::BadRadix),
+                },
+            },
             _ => return Ok((exactness, radix)),
         }
         stream.advance(2);
     }
 }
 
-fn parse_complex(stream: &mut Chars, rad: Option<Radix>) -> Result<ComplexLiteral, TokenErrorClass> {
-
+fn parse_complex(
+    stream: &mut Chars,
+    rad: Option<Radix>,
+) -> Result<ComplexLiteral, TokenErrorClass> {
     let peek = stream.peek(0);
     let mut first_sign = None;
 
@@ -355,7 +363,11 @@ fn parse_complex(stream: &mut Chars, rad: Option<Radix>) -> Result<ComplexLitera
         // ±ai
         Some('i') if first_sign.is_some() && is_delimiter!(stream.peek(1)) => {
             stream.next();
-            return Ok(ComplexLiteral::Cartesian(None, first_sign.unwrap(), Some(first_real)));
+            return Ok(ComplexLiteral::Cartesian(
+                None,
+                first_sign.unwrap(),
+                Some(first_real),
+            ));
         }
 
         _ if is_delimiter!(peek) => return Ok(ComplexLiteral::Real(first_sign, first_real)),
@@ -365,9 +377,11 @@ fn parse_complex(stream: &mut Chars, rad: Option<Radix>) -> Result<ComplexLitera
 
     // a±i
     if cartesian && stream.peek(0) == Some('i') && is_delimiter!(stream.peek(1)) {
-        return Ok(ComplexLiteral::Cartesian(Some((first_sign, first_real)),
-                                            second_sign.unwrap(),
-                                            None));
+        return Ok(ComplexLiteral::Cartesian(
+            Some((first_sign, first_real)),
+            second_sign.unwrap(),
+            None,
+        ));
     }
 
     let second_real = match parse_real(stream, rad) {
@@ -385,20 +399,25 @@ fn parse_complex(stream: &mut Chars, rad: Option<Radix>) -> Result<ComplexLitera
 
     match stream.peek(0) {
         _ if !is_delimiter!(stream.peek(0)) => return Err(TokenErrorClass::BadDelimiter),
-        _ => {
-            if cartesian {
-                Ok(ComplexLiteral::Cartesian(Some((first_sign, first_real)),
-                                             second_sign.unwrap(),
-                                             Some(second_real)))
-            } else {
-                Ok(ComplexLiteral::Polar(first_sign, first_real, second_sign, second_real))
-            }
-        }
+        _ => if cartesian {
+            Ok(ComplexLiteral::Cartesian(
+                Some((first_sign, first_real)),
+                second_sign.unwrap(),
+                Some(second_real),
+            ))
+        } else {
+            Ok(ComplexLiteral::Polar(
+                first_sign,
+                first_real,
+                second_sign,
+                second_real,
+            ))
+        },
     }
 }
 
 // It does not err if last char is not a delimiter
-fn parse_real(mut stream: &mut Chars, r: Option<Radix>) -> Result<RealLiteral, TokenErrorClass> {
+fn parse_real(stream: &mut Chars, r: Option<Radix>) -> Result<RealLiteral, TokenErrorClass> {
     #[derive(Debug, PartialEq)]
     enum Number {
         Int,
@@ -434,49 +453,45 @@ fn parse_real(mut stream: &mut Chars, r: Option<Radix>) -> Result<RealLiteral, T
             Some('#') if digits.len() > 0 => {
                 pounds += 1;
             }
-            Some('/') => {
-                match num_type {
-                    Number::Int if digits.len() > 0 => {
-                        num_type = Number::Frac;
-                        numerator = Some((digits, pounds));
-                        digits = String::new();
-                        pounds = 0;
-                    }
-                    _ => return Err(TokenErrorClass::BadFraction),
+            Some('/') => match num_type {
+                Number::Int if digits.len() > 0 => {
+                    num_type = Number::Frac;
+                    numerator = Some((digits, pounds));
+                    digits = String::new();
+                    pounds = 0;
                 }
-            }
-            Some('.') => {
-                match num_type {
-                    Number::Int if radix == 10 => {
-                        point = digits.len() + (pounds as usize);
-                        num_type = Number::Dec;
-                    }
-                    _ => return Err(TokenErrorClass::BadDecimal),
+                _ => return Err(TokenErrorClass::BadFraction),
+            },
+            Some('.') => match num_type {
+                Number::Int if radix == 10 => {
+                    point = digits.len() + (pounds as usize);
+                    num_type = Number::Dec;
                 }
-            }
+                _ => return Err(TokenErrorClass::BadDecimal),
+            },
 
             // https://github.com/rust-lang/rust/issues/26251
-            Some('0'...'9') | Some('a'...'f') | Some('s') | Some('l') => {
-                if pounds == 0 && is_valid_digit!(peek.unwrap(), radix, num_type == Number::Dec) {
-                    digits.push(peek.unwrap());
-                } else if num_type == Number::Dec {
-                    let marker = peek.unwrap();
-                    if marker == 'e' || marker == 'f' || marker == 's' || marker == 'l' ||
-                       marker == 'd' {
-                        match parse_suffix(stream).ok() {
-                            sf @ Some(_) => {
-                                suffix = sf;
-                                break;
-                            }
-                            _ => return Err(TokenErrorClass::BadSuffix),
+            Some('0'...'9') | Some('a'...'f') | Some('s') | Some('l') => if pounds == 0
+                && is_valid_digit!(peek.unwrap(), radix, num_type == Number::Dec)
+            {
+                digits.push(peek.unwrap());
+            } else if num_type == Number::Dec {
+                let marker = peek.unwrap();
+                if marker == 'e' || marker == 'f' || marker == 's' || marker == 'l' || marker == 'd'
+                {
+                    match parse_suffix(stream).ok() {
+                        sf @ Some(_) => {
+                            suffix = sf;
+                            break;
                         }
-                    } else {
-                        return Err(TokenErrorClass::BadMarker);
+                        _ => return Err(TokenErrorClass::BadSuffix),
                     }
                 } else {
-                    return Err(TokenErrorClass::BadDigit);
+                    return Err(TokenErrorClass::BadMarker);
                 }
-            }
+            } else {
+                return Err(TokenErrorClass::BadDigit);
+            },
 
             _ => break,
         }
@@ -489,27 +504,21 @@ fn parse_real(mut stream: &mut Chars, r: Option<Radix>) -> Result<RealLiteral, T
     }
 
     Ok(match num_type {
-           Number::Int => {
-               RealLiteral::Integer {
-                   digits: digits,
-                   pounds: pounds,
-               }
-           }
-           Number::Dec => {
-               RealLiteral::Decimal {
-                   digits: digits,
-                   pounds: pounds,
-                   point: point,
-                   suffix: suffix,
-               }
-           }
-           Number::Frac => {
-               RealLiteral::Fraction {
-                   numerator: numerator.unwrap(),
-                   denominator: (digits, pounds),
-               }
-           }
-       })
+        Number::Int => RealLiteral::Integer {
+            digits: digits,
+            pounds: pounds,
+        },
+        Number::Dec => RealLiteral::Decimal {
+            digits: digits,
+            pounds: pounds,
+            point: point,
+            suffix: suffix,
+        },
+        Number::Frac => RealLiteral::Fraction {
+            numerator: numerator.unwrap(),
+            denominator: (digits, pounds),
+        },
+    })
 }
 
 // It does not err if last char is not a delimiter
@@ -541,9 +550,9 @@ fn parse_suffix(stream: &mut Chars) -> Result<DecSuffix, String> {
         return Err("bad marker!".to_string());
     } else {
         return Ok(DecSuffix {
-                      sign: sign,
-                      marker: marker,
-                      digits: digits,
-                  });
+            sign: sign,
+            marker: marker,
+            digits: digits,
+        });
     }
 }
