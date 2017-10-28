@@ -1,5 +1,8 @@
-extern crate gc;
+extern crate env_logger;
+#[macro_use]
+extern crate log;
 extern crate r5rs;
+
 
 use std::io::{stdin, stdout, Write};
 
@@ -9,13 +12,13 @@ use r5rs::interpreter::*;
 use r5rs::compiler::*;
 
 fn main() {
+    env_logger::init().ok().expect("logger");
     let mut buffer = String::new();
     let mut chars;
     let environment = default_env();
 
     loop {
         buffer.clear();
-
 
         let prompt = stdout().write("> ".as_bytes()).and(stdout().flush());
 
@@ -60,7 +63,7 @@ fn main() {
             }
         };
 
-        println!("Code:\n{:?}", bytecode);
+        debug!("Code:\n{:?}", bytecode);
         let result = exec(bytecode, environment.clone());
 
         match result {

@@ -82,7 +82,7 @@ pub enum Scalar {
 
 impl Value {
     pub fn to_repl(&self) -> String {
-        println!("to_repl: {:?}", self);
+        debug!("to_repl: {:?}", self);
         match *self {
             Value::Scalar(Scalar::Nil) => "".to_owned(),
             Value::Scalar(Scalar::EmptyList) => "()".to_owned(),
@@ -328,7 +328,7 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
                 &bytecode[pc]
             }
         };
-        println!(
+        debug!(
             "pc {:?}\tcode: {:?}\tdepth: {:?}\n\t stack: {:?}",
             pc,
             instruction,

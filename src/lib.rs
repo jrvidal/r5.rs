@@ -1,5 +1,8 @@
+extern crate env_logger;
 #[macro_use]
 extern crate gc;
+#[macro_use]
+extern crate log;
 
 #[macro_use]
 mod helpers;
