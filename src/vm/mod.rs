@@ -1,9 +1,12 @@
 use std::collections::HashMap;
 use std::rc::Rc;
-use self::gc::{shared, GcShared};
+use self::gc::shared;
 use self::stack::Stack;
-use self::value::{Environment, Scalar, Value};
+pub use self::value::{Scalar, Value};
 use compiler::Instruction;
+
+pub use self::gc::GcShared;
+pub use self::value::Environment;
 
 mod environment;
 mod gc;
@@ -32,10 +35,24 @@ trait Newable {
     fn new(&self) -> Self;
 }
 
+#[derive(Debug)]
+pub enum ExecutionError {
+    StackOverflow,
+    NonCallable,
+    BadArgc,
+    UnboundVar,
+    Internal(&'static str),
+}
 
-pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> Result<Value, ()> {
+
+pub fn exec(
+    bytecode: &[Instruction],
+    environment: GcShared<Environment>,
+) -> Result<Value, ExecutionError> {
+    use self::ExecutionError::*;
+
     let mut pc = 0;
-    let mut stack = Stack::new();
+    let mut stack = Stack::default();
     let mut current_env = environment;
     let mut compiled_code: Option<Rc<Vec<Instruction>>> = None;
     let mut next_compiled_code = None;
@@ -147,7 +164,7 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
             // * ...                 * return_record
             Instruction::Call(tail) => {
                 if call_stack_depth > MAX_CALL_STACK_DEPTH {
-                    return Err(());
+                    return Err(StackOverflow);
                 }
 
                 let val = stack.swap_remove(1);
@@ -158,7 +175,7 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
                         pc += 1;
                         continue;
                     }
-                    _ => return Err(()),
+                    _ => return Err(NonCallable),
                 };
 
                 let environment = environment.new();
@@ -166,12 +183,9 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
                 if !tail {
                     call_stack_depth += 1;
 
-                    let n_of_args = if let &Value::Scalar(Scalar::Integer(ref n)) =
-                        stack.get(0).ok_or_else(|| ())?
-                    {
-                        *n as usize
-                    } else {
-                        return Err(());
+                    let n_of_args = match stack.get(0) {
+                        Some(&Value::Scalar(Scalar::Integer(ref n))) if *n >= 0 => *n as usize,
+                        _ => return Err(Internal("no argc on stack")),
                     };
 
                     let return_record = Value::ReturnRecord {
@@ -187,9 +201,9 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
                 next_pc = Some(0);
             }
             Instruction::Arity(n_of_args, rest) => {
-                let args_passed = match stack.pop().ok_or_else(|| ())? {
-                    Value::Scalar(Scalar::Integer(n)) => n as usize,
-                    _ => return Err(()),
+                let args_passed = match stack.pop() {
+                    Some(Value::Scalar(Scalar::Integer(n))) if n >= 0 => n as usize,
+                    _ => return Err(Internal("no argc on stack")),
                 };
 
                 if !rest {
@@ -197,12 +211,12 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
                         pc += 1;
                         continue;
                     } else {
-                        return Err(());
+                        return Err(BadArgc);
                     }
                 }
 
                 if n_of_args > 0 && args_passed < n_of_args {
-                    return Err(());
+                    return Err(BadArgc);
                 }
 
                 let diff = args_passed - n_of_args;
@@ -229,7 +243,7 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
                 stack.push(Value::Scalar(Scalar::Nil));
             }
             Instruction::LoadVar(ref var_name) => {
-                let value = current_env.borrow().get(var_name.clone()).ok_or_else(|| ())?;
+                let value = current_env.borrow().get(var_name.clone()).ok_or(UnboundVar)?;
                 stack.push(value);
             }
             Instruction::DefineVar(ref var_name) => {
@@ -279,7 +293,7 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
                 {
                     (address, environment, code)
                 } else {
-                    return Err(());
+                    return Err(Internal("no return record on stack"));
                 };
 
                 current_env = environment;
@@ -319,45 +333,52 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
         }
     }
 
-    Ok(stack.pop().expect("empty stack"))
+    stack.pop().ok_or(Internal("Empty stack"))
 }
 
 
-fn call_native_procedure(stack: &mut Stack<Value>, fun: fn(Vec<Value>) -> Value) -> Result<(), ()> {
-    let n = if let Value::Scalar(Scalar::Integer(n)) = stack.pop().ok_or_else(|| ())? {
-        n as usize
-    } else {
-        return Err(());
+fn call_native_procedure(
+    stack: &mut Stack<Value>,
+    fun: fn(Vec<Value>) -> Result<Value, ExecutionError>,
+) -> Result<(), ExecutionError> {
+    let n = match stack.pop() {
+        Some(Value::Scalar(Scalar::Integer(n))) if n >= 0 => n as usize,
+        _ => return Err(ExecutionError::Internal("no argc on stack")),
     };
+
     let mut values = vec![];
     for _ in 0..n {
-        values.push(stack.pop().ok_or_else(|| ())?);
+        values.push(stack
+            .pop()
+            .ok_or(ExecutionError::Internal("insufficient args"))?);
     }
-    let ret = fun(values);
-    stack.push(ret);
-    Ok(())
+    fun(values).map(|ret| {
+        stack.push(ret);
+        ()
+    })
 }
 
-fn list(mut values: Vec<Value>) -> Value {
+fn list(mut values: Vec<Value>) -> Result<Value, ExecutionError> {
     if values.len() == 0 {
-        return Value::Scalar(Scalar::EmptyList);
+        return Ok(Value::Scalar(Scalar::EmptyList));
     }
+
+
 
     let mut pair = Value::Pair {
         car: shared(values.pop().unwrap()),
         cdr: shared(Value::Scalar(Scalar::EmptyList)),
     };
 
-    values.reverse();
-
-    for val in values.into_iter() {
+    while let Some(val) = values.pop() {
         pair = Value::Pair {
             car: shared(val),
             cdr: shared(pair),
         }
     }
 
-    pair
+
+    Ok(pair)
 }
 
 pub fn default_env() -> GcShared<Environment> {

@@ -64,11 +64,11 @@ fn main() {
         };
 
         debug!("Code:\n{:?}", bytecode);
-        let result = exec(bytecode, environment.clone());
+        let result = exec(&bytecode, environment.clone());
 
         match result {
             Ok(v) => println!("{}", v.to_repl()),
-            Err(_) => println!("execution error"),
+            Err(e) => println!("Error: {:?}", e),
         };
     }
 }

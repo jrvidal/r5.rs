@@ -3,6 +3,7 @@ use gc::{Finalize, Trace};
 use helpers::{CowString, ImmutableString};
 use super::gc::GcShared;
 use super::environment::Environment as GenericEnvironment;
+use super::ExecutionError;
 use compiler::Instruction;
 
 pub type Environment = GenericEnvironment<Value>;
@@ -22,7 +23,7 @@ pub enum Value {
         code: Rc<Vec<Instruction>>,
         environment: GcShared<Environment>,
     },
-    NativeProcedure(fn(Vec<Value>) -> Value),
+    NativeProcedure(fn(Vec<Value>) -> Result<Value, ExecutionError>),
     Environment(GcShared<Environment>),
     ReturnRecord {
         environment: GcShared<Environment>,

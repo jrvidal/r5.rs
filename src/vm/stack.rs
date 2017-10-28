@@ -5,9 +5,6 @@ use gc::{Finalize, Trace};
 pub(super) struct Stack<T>(Vec<T>);
 
 impl<T> Stack<T> {
-    pub fn new() -> Stack<T> {
-        Stack(Vec::new())
-    }
     pub fn push(&mut self, it: T) {
         self.0.push(it);
     }
@@ -53,6 +50,12 @@ impl<T: Debug> Debug for Stack<T> {
         }
 
         write!(fmt, "]")
+    }
+}
+
+impl<T> Default for Stack<T> {
+    fn default() -> Stack<T> {
+        Stack(Vec::new())
     }
 }
 
