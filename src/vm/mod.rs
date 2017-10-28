@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
-use self::gc::shared;
 use self::stack::Stack;
+use self::gc::shared;
 pub use self::value::{Scalar, Value};
 use compiler::Instruction;
 
@@ -12,6 +12,7 @@ mod environment;
 mod gc;
 mod stack;
 mod value;
+mod stdlib;
 
 const MAX_CALL_STACK_DEPTH: usize = 128;
 
@@ -358,32 +359,11 @@ fn call_native_procedure(
     })
 }
 
-fn list(mut values: Vec<Value>) -> Result<Value, ExecutionError> {
-    if values.len() == 0 {
-        return Ok(Value::Scalar(Scalar::EmptyList));
-    }
-
-
-
-    let mut pair = Value::Pair {
-        car: shared(values.pop().unwrap()),
-        cdr: shared(Value::Scalar(Scalar::EmptyList)),
-    };
-
-    while let Some(val) = values.pop() {
-        pair = Value::Pair {
-            car: shared(val),
-            cdr: shared(pair),
-        }
-    }
-
-
-    Ok(pair)
-}
 
 pub fn default_env() -> GcShared<Environment> {
     let mut env = Environment::default();
 
-    env.define("list".into(), Value::NativeProcedure(list));
+    env.define("list".into(), Value::NativeProcedure(stdlib::list));
+    env.define("cons".into(), Value::NativeProcedure(stdlib::cons));
     shared(env)
 }

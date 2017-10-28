@@ -24,7 +24,6 @@ pub enum Value {
         environment: GcShared<Environment>,
     },
     NativeProcedure(fn(Vec<Value>) -> Result<Value, ExecutionError>),
-    Environment(GcShared<Environment>),
     ReturnRecord {
         environment: GcShared<Environment>,
         address: usize,
@@ -47,7 +46,6 @@ unsafe impl Trace for Value {
                 mark(environment);
             }
             Value::NativeProcedure(..) => {}
-            Value::Environment(ref env) => mark(env),
             Value::ReturnRecord {
                 ref environment, ..
             } => mark(environment),
