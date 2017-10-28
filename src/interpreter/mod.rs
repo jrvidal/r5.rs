@@ -24,6 +24,7 @@ pub enum Value {
         code: Rc<Vec<Instruction>>,
         environment: GcShared<Environment>,
     },
+    NativeProcedure(fn(Vec<Value>) -> Value),
     Environment(GcShared<Environment>),
     ReturnRecord {
         environment: GcShared<Environment>,
@@ -46,6 +47,7 @@ unsafe impl Trace for Value {
             } => {
                 mark(environment);
             }
+            Value::NativeProcedure(..) => {}
             Value::Environment(ref env) => mark(env),
             Value::ReturnRecord {
                 ref environment, ..
@@ -84,11 +86,7 @@ impl Value {
         match *self {
             Value::Scalar(Scalar::Nil) => "".to_owned(),
             Value::Scalar(Scalar::EmptyList) => "()".to_owned(),
-            Value::Scalar(Scalar::Boolean(b)) => if b {
-                "#t".to_owned()
-            } else {
-                "#f".to_owned()
-            },
+            Value::Scalar(Scalar::Boolean(b)) => if b { "#t" } else { "#f" }.to_owned(),
             Value::Scalar(Scalar::Character(c)) => {
                 let printed = match c {
                     '\n' => "newline".to_owned(),
@@ -102,6 +100,7 @@ impl Value {
             Value::Scalar(Scalar::Symbol(ref s)) => format!("{}", *s),
             Value::String(ref s) => "\"".to_owned() + &escape(s.into()) + "\"",
             Value::Procedure { .. } => "<procedure>".to_owned(),
+            Value::NativeProcedure(..) => "<procedure>".to_owned(),
             Value::Vector(ref vals) => {
                 vals.iter()
                     .fold("#(".into(), |acc: String, val| acc + &val.to_repl())
@@ -147,6 +146,7 @@ fn pair_to_repl(value: &Value) -> (bool, String) {
 }
 
 
+#[derive(Default)]
 pub struct Environment {
     parent: Option<GcShared<Environment>>,
     bindings: HashMap<ImmutableString, Value>,
@@ -426,12 +426,15 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
                 }
 
                 let val = stack.swap_remove_front(1).ok_or_else(|| ())?;
-                let (code, environment) = if let Value::Procedure { code, environment } = val {
-                    (code, environment)
-                } else {
-                    return Err(());
+                let (code, environment) = match val {
+                    Value::Procedure { code, environment } => (code, environment),
+                    Value::NativeProcedure(fun) => {
+                        call_native_procedure(&mut stack, fun)?;
+                        pc += 1;
+                        continue;
+                    }
+                    _ => return Err(()),
                 };
-
 
                 let environment = environment.new();
 
@@ -592,4 +595,49 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
     }
 
     Ok(stack.pop_front().expect("empty stack"))
+}
+
+
+fn call_native_procedure(stack: &mut Stack<Value>, fun: fn(Vec<Value>) -> Value) -> Result<(), ()> {
+    let n = if let Value::Scalar(Scalar::Integer(n)) = stack.pop_front().ok_or_else(|| ())? {
+        n as usize
+    } else {
+        return Err(());
+    };
+    let mut values = vec![];
+    for _ in 0..n {
+        values.push(stack.pop_front().ok_or_else(|| ())?);
+    }
+    let ret = fun(values);
+    stack.push_front(ret);
+    Ok(())
+}
+
+fn list(mut values: Vec<Value>) -> Value {
+    if values.len() == 0 {
+        return Value::Scalar(Scalar::EmptyList);
+    }
+
+    let mut pair = Value::Pair {
+        car: shared(values.pop().unwrap()),
+        cdr: shared(Value::Scalar(Scalar::EmptyList)),
+    };
+
+    values.reverse();
+
+    for val in values.into_iter() {
+        pair = Value::Pair {
+            car: shared(val),
+            cdr: shared(pair),
+        }
+    }
+
+    pair
+}
+
+pub fn default_env() -> GcShared<Environment> {
+    let mut env = Environment::default();
+
+    env.define("list".into(), Value::NativeProcedure(list));
+    shared(env)
 }

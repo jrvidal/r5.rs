@@ -1,5 +1,5 @@
-extern crate r5rs;
 extern crate gc;
+extern crate r5rs;
 
 use std::io::{stdin, stdout, Write};
 
@@ -11,7 +11,7 @@ use r5rs::compiler::*;
 fn main() {
     let mut buffer = String::new();
     let mut chars;
-    let environment = null_env();
+    let environment = default_env();
 
     loop {
         buffer.clear();
