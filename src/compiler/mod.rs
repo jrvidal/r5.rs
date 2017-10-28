@@ -238,19 +238,16 @@ enum LetExp {
 // }
 
 pub fn compile_expression(d: Datum) -> Option<Vec<Instruction>> {
-    parse_expression_inner(d).ok()
+    compile_expression_inner(d, false).ok()
 }
 
-fn parse_expression_inner(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
+fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, ParsingError> {
     macro_rules! simple_datum {
         ($T:ident, $c:expr) => (
             Ok(vec![Instruction::$T($c)])
         )
     }
-    // let matcher = {
-    //     let st = symbol_type(d);
-    //     (st.0, st.1, symbolic)
-    // };
+
     // Simple cases
     let mut datums = match (symbol_type(&d), d) {
         (Symbol::Variable, Datum::Symbol(s)) => return simple_datum!(LoadVar, s.into()),
@@ -298,7 +295,7 @@ fn parse_expression_inner(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
     let head = datums.pop_front().unwrap();
     let symbol = &match keyword_name(head.clone()) {
         Some(s) => s,
-        _ => return parse_call_exp(head, datums),
+        _ => return compile_call_exp(head, datums, tail),
     };
 
     match (&symbol[..], datums.len()) {
@@ -308,20 +305,17 @@ fn parse_expression_inner(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
         // (keywords::QUASIQUOTE, 1) => {
         //     Ok(datums.pop_front().map(Expression::QuasiQuotation).unwrap())
         // }
-        // // If
+        // If
         (keywords::IF, 2) | (keywords::IF, 3) => {
-            let mut exprs: Vec<Vec<_>> = datums
-                .into_iter()
-                .map(|d| parse_expression_inner(d))
-                .collect::<Result<_, _>>()?;
-            let (test, consequent, alternate) = {
-                let last = exprs.pop();
-                let next_to_last = exprs.pop().unwrap();
-                if exprs.len() == 0 {
-                    (next_to_last, last.unwrap(), None)
-                } else {
-                    (exprs.pop().unwrap(), next_to_last, last)
-                }
+            let test = compile_expression_inner(datums.pop_front().unwrap(), false)?;
+            let consequent = compile_expression_inner(datums.pop_front().unwrap(), tail)?;
+            let alternate = match datums
+                .pop_front()
+                .map(|d| compile_expression_inner(d, tail))
+            {
+                Some(Ok(bc)) => Some(bc),
+                None => None,
+                Some(err) => return err,
             };
 
             let test_offset = consequent.len();
@@ -343,7 +337,7 @@ fn parse_expression_inner(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
         (keywords::SET_BANG, 2) => {
             let d = datums.pop_front().unwrap();
             let var = symbol_type(&d);
-            let parsed = parse_expression_inner(datums.pop_front().unwrap());
+            let parsed = compile_expression_inner(datums.pop_front().unwrap(), false);
             match (d, var, parsed) {
                 (Datum::Symbol(s), Symbol::Variable, Ok(mut instructions)) => {
                     instructions.push(Instruction::SetVar(s.into()));
@@ -356,7 +350,7 @@ fn parse_expression_inner(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
         // Lambda
         (keywords::LAMBDA, l) if l >= 2 => {
             let formals = parse_lambda_formals_exp(datums.pop_front().unwrap())?;
-            return parse_lambda_exp(formals, datums);
+            return compile_lambda_exp(formals, datums);
         }
 
         // (keywords::COND, l) if l >= 1 => {
@@ -375,7 +369,6 @@ fn parse_expression_inner(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
         //         },
         //         None => {
         //             let head_clause = clauses.remove(0);
-        //             Derived::Cond {
         //                 head_clause,
         //                 tail_clauses: clauses,
         //             }
@@ -414,11 +407,11 @@ fn parse_expression_inner(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
         //     Ok(Expression::Derived(derived))
         // }
         (keywords::LET, l) if l >= 2 => match symbol_type(&datums[0]) {
-            Symbol::Variable => parse_let_exp(datums, LetExp::NamedLet),
-            _ => parse_let_exp(datums, LetExp::Let),
+            Symbol::Variable => compile_let_exp(datums, LetExp::NamedLet, tail),
+            _ => compile_let_exp(datums, LetExp::Let, tail),
         },
-        (keywords::LETREC, l) if l >= 2 => parse_let_exp(datums, LetExp::LetRec),
-        (keywords::LET_STAR, l) if l >= 2 => parse_let_exp(datums, LetExp::LetStar),
+        (keywords::LETREC, l) if l >= 2 => compile_let_exp(datums, LetExp::LetRec, tail),
+        (keywords::LET_STAR, l) if l >= 2 => compile_let_exp(datums, LetExp::LetStar, tail),
         // (keywords::DO, l) if l >= 2 => {
         //     let iterations = datums
         //         .pop_front()
@@ -461,9 +454,11 @@ fn parse_expression_inner(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
             // ...
             // <test k>, And, but no BranchUnless
             // <next>
+            let last_exp = datums.len() - 1;
             let tests: Vec<_> = datums
                 .into_iter()
-                .map(|d| parse_expression_inner(d))
+                .enumerate()
+                .map(|(i, d)| compile_expression_inner(d, tail && i == last_exp))
                 .collect::<Result<_, _>>()?;
 
             let length = tests
@@ -489,9 +484,11 @@ fn parse_expression_inner(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
             Ok(instructions)
         }
         (keywords::OR, _) => {
+            let last_exp = datums.len() - 1;
             let tests: Vec<_> = datums
                 .into_iter()
-                .map(|d| parse_expression_inner(d))
+                .enumerate()
+                .map(|(i, d)| compile_expression_inner(d, tail && i == last_exp))
                 .collect::<Result<_, _>>()?;
 
             let n_of_tests = tests.len();
@@ -569,7 +566,7 @@ fn compile_quotation(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
             kind: AbbreviationKind::Quasiquote,
             ..
         } => panic!("todo quasiquote"),
-        d => parse_expression_inner(d)?,
+        d => compile_expression_inner(d, false)?,
     };
 
     Ok(instructions)
@@ -654,9 +651,10 @@ fn compile_quotation(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
 // }
 
 // panics unless datums.len() >= 1
-fn parse_let_exp(
+fn compile_let_exp(
     mut datums: VecDeque<Datum>,
     let_type: LetExp,
+    tail: bool,
 ) -> Result<Vec<Instruction>, ParsingError> {
     if let LetExp::NamedLet = let_type {
         panic!("named let");
@@ -673,13 +671,13 @@ fn parse_let_exp(
             check![(pair.len() == 2), ParsingError::Illegal];
 
             let variable = parse_variable(pair.pop_front().unwrap())?;
-            let init = parse_expression_inner(pair.pop_front().unwrap())?;
+            let init = compile_expression_inner(pair.pop_front().unwrap(), false)?;
 
             Ok((variable.into(), init))
         })
         .collect::<Result<Vec<(_, _)>, _>>()?;
 
-    let body = parse_body(datums)?;
+    let body = compile_body(datums, tail)?;
 
     let n_of_bindings = bindings_list.len();
     let mut instructions = vec![];
@@ -729,9 +727,10 @@ fn parse_let_exp(
     Ok(instructions)
 }
 
-fn parse_call_exp(
+fn compile_call_exp(
     operator_d: Datum,
     mut operands_d: VecDeque<Datum>,
+    tail: bool,
 ) -> Result<Vec<Instruction>, ParsingError> {
     let n_of_args = operands_d.len();
     operands_d.push_front(operator_d);
@@ -746,11 +745,11 @@ fn parse_call_exp(
     let mut instructions = operands_d.compiled()?;
 
     instructions.push(Instruction::Integer(n_of_args as isize));
-    instructions.push(Instruction::Call(false));
+    instructions.push(Instruction::Call(tail));
     Ok(instructions)
 }
 
-fn parse_lambda_exp(
+fn compile_lambda_exp(
     formals: LambdaFormals,
     datums: VecDeque<Datum>,
 ) -> Result<Vec<Instruction>, ParsingError> {
@@ -764,7 +763,7 @@ fn parse_lambda_exp(
             instructions.extend(load_instructions);
         }
         LambdaFormals::VarArgs(arg) => instructions.extend(vec![
-            Instruction::Arity(0, false),
+            Instruction::Arity(0, true),
             Instruction::DefineVar(arg.into()),
         ]),
         LambdaFormals::Rest(mut args, rest) => {
@@ -777,22 +776,23 @@ fn parse_lambda_exp(
         }
     }
 
-    let body = parse_body(datums)?;
+    let body = compile_body(datums, true)?;
     instructions.extend(body);
     instructions.push(Instruction::Ret);
     Ok(vec![Instruction::Lambda(Rc::new(instructions))])
 }
 
-fn parse_body(mut datums: VecDeque<Datum>) -> Result<Vec<Instruction>, ParsingError> {
-    let definitions = parse_definitions(&mut datums);
+fn compile_body(mut datums: VecDeque<Datum>, tail: bool) -> Result<Vec<Instruction>, ParsingError> {
+    let definitions = compile_definitions(&mut datums);
 
     check![datums.len() > 0, ParsingError::Illegal];
 
-    let mut commands: Vec<Vec<_>> = datums
+    let expression = compile_expression_inner(datums.pop_back().unwrap(), tail)?;
+
+    let commands: Vec<Vec<_>> = datums
         .into_iter()
-        .map(|d| parse_expression_inner(d))
+        .map(|d| compile_expression_inner(d, false))
         .collect::<Result<_, _>>()?;
-    let expression = commands.pop().unwrap();
 
     let mut instructions = vec![];
 
@@ -805,7 +805,7 @@ fn parse_body(mut datums: VecDeque<Datum>) -> Result<Vec<Instruction>, ParsingEr
     Ok(instructions)
 }
 
-fn parse_definition(datum: Datum) -> Result<Vec<Instruction>, ParsingError> {
+fn compile_definition(datum: Datum, tail: bool) -> Result<Vec<Instruction>, ParsingError> {
     let mut list = datum.list().ok_or(ParsingError::Illegal)?;
 
     check![list.len() > 0, ParsingError::Illegal];
@@ -813,10 +813,13 @@ fn parse_definition(datum: Datum) -> Result<Vec<Instruction>, ParsingError> {
     let symbol = keyword_name(list.pop_front().unwrap()).ok_or(ParsingError::Illegal)?;
 
     match &symbol[..] {
+        // TODO: top-level begin wat
+        keywords::BEGIN if list.is_empty() => Ok(vec![Instruction::Nil]),
         keywords::BEGIN => {
             let mut instructions = vec![];
-            for d in list.into_iter() {
-                instructions.extend(parse_expression_inner(d)?);
+            let last_exp = list.len() - 1;
+            for (i, d) in list.into_iter().enumerate() {
+                instructions.extend(compile_expression_inner(d, tail && i == last_exp)?);
                 instructions.push(Instruction::Pop);
             }
             instructions.pop();
@@ -827,7 +830,8 @@ fn parse_definition(datum: Datum) -> Result<Vec<Instruction>, ParsingError> {
             let formals = list.pop_front().map(parse_lambda_formals_exp).unwrap();
             let instructions = match (formals, list.len()) {
                 (Ok(LambdaFormals::VarArgs(variable)), 1) => {
-                    let mut instructions = parse_expression_inner(list.pop_front().unwrap())?;
+                    let mut instructions =
+                        compile_expression_inner(list.pop_front().unwrap(), false)?;
                     instructions.push(Instruction::DefineVar(variable.into()));
                     instructions
                 }
@@ -836,7 +840,7 @@ fn parse_definition(datum: Datum) -> Result<Vec<Instruction>, ParsingError> {
 
                     let variable = args.remove(0);
                     let formals = LambdaFormals::List(args);
-                    let mut instructions = parse_lambda_exp(formals, list)?;
+                    let mut instructions = compile_lambda_exp(formals, list)?;
                     instructions.push(Instruction::DefineVar(variable.into()));
                     instructions
                 }
@@ -845,7 +849,7 @@ fn parse_definition(datum: Datum) -> Result<Vec<Instruction>, ParsingError> {
 
                     let variable = args.remove(0);
                     let formals = LambdaFormals::VarArgs(rest);
-                    let mut instructions = parse_lambda_exp(formals, list)?;
+                    let mut instructions = compile_lambda_exp(formals, list)?;
                     instructions.push(Instruction::DefineVar(variable.into()));
                     instructions
                 }
@@ -871,7 +875,7 @@ fn parse_lambda_formals_exp(datum: Datum) -> Result<LambdaFormals, ParsingError>
     }
 }
 
-fn parse_definitions(datums: &mut VecDeque<Datum>) -> Vec<Vec<Instruction>> {
+fn compile_definitions(datums: &mut VecDeque<Datum>) -> Vec<Vec<Instruction>> {
     let mut definitions = vec![];
 
     loop {
@@ -879,7 +883,7 @@ fn parse_definitions(datums: &mut VecDeque<Datum>) -> Vec<Vec<Instruction>> {
             .get(0)
             .cloned()
             .ok_or(ParsingError::Illegal)
-            .and_then(|d| parse_definition(d));
+            .and_then(|d| compile_definition(d, false));
 
         if let Ok(def) = maybe_def {
             definitions.push(def);
@@ -967,13 +971,13 @@ trait CompilerHelper: Sized {
 impl CompilerHelper for VecDeque<Datum> {
     fn compiled(mut self) -> Result<Vec<Instruction>, ParsingError> {
         let mut acc = if let Some(d) = self.pop_front() {
-            parse_expression_inner(d)?
+            compile_expression_inner(d, false)?
         } else {
             return Ok(vec![]);
         };
 
         for d in self.into_iter() {
-            acc.extend(parse_expression_inner(d)?);
+            acc.extend(compile_expression_inner(d, false)?);
         }
 
         Ok(acc)

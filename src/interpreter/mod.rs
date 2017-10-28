@@ -6,6 +6,8 @@ use std::fmt::{Debug, Error as FmtError, Formatter};
 use helpers::{CowString, ImmutableString};
 use compiler::Instruction;
 
+const MAX_CALL_STACK_DEPTH: usize = 128;
+
 pub type GcShared<T> = Gc<GcCell<T>>;
 
 #[derive(Debug, Clone)]
@@ -48,10 +50,8 @@ unsafe impl Trace for Value {
             Value::ReturnRecord {
                 ref environment, ..
             } => mark(environment),
-            Value::Vector(ref vals) => {
-                for v in vals.iter() {
-                    mark(v);
-                }
+            Value::Vector(ref vals) => for v in vals.iter() {
+                mark(v);
             },
             Value::String(_) => {}
             Value::Number => {}
@@ -84,25 +84,29 @@ impl Value {
         match *self {
             Value::Scalar(Scalar::Nil) => "".to_owned(),
             Value::Scalar(Scalar::EmptyList) => "()".to_owned(),
-            Value::Scalar(Scalar::Boolean(b)) => if b { "#t".to_owned() } else { "#f".to_owned() },
+            Value::Scalar(Scalar::Boolean(b)) => if b {
+                "#t".to_owned()
+            } else {
+                "#f".to_owned()
+            },
             Value::Scalar(Scalar::Character(c)) => {
                 let printed = match c {
                     '\n' => "newline".to_owned(),
                     ' ' => "space".to_owned(),
-                    c => format!("{}", c)
+                    c => format!("{}", c),
                 };
 
                 "#\\".to_owned() + &printed
-            },
+            }
             Value::Scalar(Scalar::Integer(n)) => format!("{}", n),
             Value::Scalar(Scalar::Symbol(ref s)) => format!("{}", *s),
             Value::String(ref s) => "\"".to_owned() + &escape(s.into()) + "\"",
             Value::Procedure { .. } => "<procedure>".to_owned(),
             Value::Vector(ref vals) => {
                 vals.iter()
-                    .fold("#(".into(), |acc : String, val| acc + &val.to_repl())
+                    .fold("#(".into(), |acc: String, val| acc + &val.to_repl())
                     + ")"
-            },
+            }
             ref pair @ Value::Pair { .. } => format!("({})", pair_to_repl(&pair).1),
             ref v => format!("{:?}", v),
         }
@@ -111,15 +115,12 @@ impl Value {
 
 fn escape(s: String) -> String {
     s.chars()
-        .flat_map(|c| {
-            match c {
-                '"' => vec!['\\', '"'],
-                '\\' => vec!['\\', '\\'],
-                c => vec![c]
-            }
+        .flat_map(|c| match c {
+            '"' => vec!['\\', '"'],
+            '\\' => vec!['\\', '\\'],
+            c => vec![c],
         })
         .collect()
-
 }
 
 fn pair_to_repl(value: &Value) -> (bool, String) {
@@ -258,8 +259,6 @@ impl Environment {
                 borrowed.parent.clone().unwrap()
             }
         }
-
-
     }
 }
 
@@ -315,6 +314,7 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
     let mut current_env = environment;
     let mut compiled_code: Option<Rc<Vec<Instruction>>> = None;
     let mut next_compiled_code = None;
+    let mut call_stack_depth = 0;
 
     loop {
         compiled_code = next_compiled_code.unwrap_or(compiled_code);
@@ -327,9 +327,14 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
             } else {
                 &bytecode[pc]
             }
-
         };
-        println!("pc {:?}\tcode: {:?}\n\t stack: {:?}", pc, instruction, stack);
+        println!(
+            "pc {:?}\tcode: {:?}\tdepth: {:?}\n\t stack: {:?}",
+            pc,
+            instruction,
+            call_stack_depth,
+            stack
+        );
         let mut next_pc = None;
 
         match *instruction {
@@ -373,7 +378,7 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
                     vector.push(stack.pop_front().expect("vector entry"));
                 }
                 stack.push_front(Value::Vector(vector));
-            },
+            }
             // Stack in reverse order:
             // a_n, ..., a_1, ...
             Instruction::List(0, false) => {
@@ -388,7 +393,7 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
 
                 let mut pair = Value::Pair {
                     car: shared(stack.pop_front().unwrap()),
-                    cdr: shared(cdr)
+                    cdr: shared(cdr),
                 };
 
                 let rest = if improper { n } else { n - 1 };
@@ -416,6 +421,10 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
             // * arg1                * ...
             // * ...                 * return_record
             Instruction::Call(tail) => {
+                if call_stack_depth > MAX_CALL_STACK_DEPTH {
+                    return Err(());
+                }
+
                 let val = stack.swap_remove_front(1).ok_or_else(|| ())?;
                 let (code, environment) = if let Value::Procedure { code, environment } = val {
                     (code, environment)
@@ -427,6 +436,8 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
                 let environment = environment.new();
 
                 if !tail {
+                    call_stack_depth += 1;
+
                     let n_of_args = if let &Value::Scalar(Scalar::Integer(ref n)) =
                         stack.get(0).ok_or_else(|| ())?
                     {
@@ -453,10 +464,16 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
                     _ => return Err(()),
                 };
 
-                if !rest && n_of_args > 0 && n_of_args == args_passed {
-                    pc += 1;
-                    continue;
-                 } else if n_of_args > 0 && args_passed < n_of_args {
+                if !rest {
+                    if n_of_args == args_passed {
+                        pc += 1;
+                        continue;
+                    } else {
+                        return Err(());
+                    }
+                }
+
+                if n_of_args > 0 && args_passed < n_of_args {
                     return Err(());
                 }
 
@@ -484,10 +501,7 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
                 stack.push_front(Value::Scalar(Scalar::Nil));
             }
             Instruction::LoadVar(ref var_name) => {
-                let value = current_env
-                    .borrow()
-                    .get(var_name.clone())
-                    .ok_or_else(|| ())?;
+                let value = current_env.borrow().get(var_name.clone()).ok_or_else(|| ())?;
                 stack.push_front(value);
             }
             Instruction::DefineVar(ref var_name) => {
@@ -525,6 +539,8 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
             // * ret_value
             // * return_record
             Instruction::Ret => {
+                call_stack_depth -= 1;
+
                 let return_record = stack.swap_remove_front(1).expect("return_record");
 
                 let (ra, environment, code) = if let Value::ReturnRecord {
@@ -570,7 +586,7 @@ pub fn exec(bytecode: Vec<Instruction>, environment: GcShared<Environment>) -> R
 
         pc = next_pc.unwrap_or(pc + 1);
 
-        if bytecode.len() == pc {
+        if compiled_code.is_none() && bytecode.len() == pc {
             break;
         }
     }
