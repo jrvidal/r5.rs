@@ -10,4 +10,4 @@ mod helpers;
 pub mod lexer;
 pub mod reader;
 pub mod compiler;
-pub mod interpreter;
+pub mod vm;
