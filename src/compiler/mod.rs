@@ -18,12 +18,10 @@ pub enum Instruction {
     Nil,
     EmptyList,
     // ***
-    // Call(is_tail), save return environment if it's not tail
-    Call(bool),
+    // Call(is_tail, n_of_args), save return environment if it's not tail
+    Call(bool, usize),
     // Return, restore return environment
     Ret,
-    // Check arity, load rest arguments
-    Arity(usize, bool),
     // Branch +n unconditionally
     Branch(usize),
     // Branch +n if stack pop is truthy
@@ -34,7 +32,10 @@ pub enum Instruction {
     ROBranchIf(usize),
     ROBranchUnless(usize),
     // Push compiled lambda
-    Lambda(Rc<Vec<Instruction>>),
+    Lambda {
+        code: Rc<Vec<Instruction>>,
+        arity: (usize, bool),
+    },
     // Make pair from 2 pops and push
     Pair,
     // Make list from n pops and push. Bool indicates improper list (+2 pops)
@@ -727,59 +728,54 @@ fn compile_let_exp(
     Ok(instructions)
 }
 
+// Order of expressions: arg_1, ..., arg_n, operator
+// Order in stack: operator, arg_n, ..., arg_1
 fn compile_call_exp(
     operator_d: Datum,
-    mut operands_d: VecDeque<Datum>,
+    operands_d: VecDeque<Datum>,
     tail: bool,
 ) -> Result<Vec<Instruction>, ParsingError> {
     let n_of_args = operands_d.len();
-    operands_d.push_front(operator_d);
-
-    // Ugh, VecDeque
-    operands_d = {
-        let mut vec: Vec<_> = operands_d.into_iter().collect();
-        vec.reverse();
-        vec.into_iter().collect()
-    };
-
     let mut instructions = operands_d.compiled()?;
+    instructions.extend(compile_expression_inner(operator_d, false)?);
 
-    instructions.push(Instruction::Integer(n_of_args as isize));
-    instructions.push(Instruction::Call(tail));
+    instructions.push(Instruction::Call(tail, n_of_args));
     Ok(instructions)
 }
 
+// Order of formals: DefineVar(arg_n), ... DefineVar(arg_1)
 fn compile_lambda_exp(
     formals: LambdaFormals,
     datums: VecDeque<Datum>,
 ) -> Result<Vec<Instruction>, ParsingError> {
     let mut instructions = vec![];
 
-    match formals {
+    let (arity, mut args) = match formals {
         LambdaFormals::List(args) => {
-            instructions.push(Instruction::Arity(args.len(), false));
-            let load_instructions = args.into_iter()
-                .map(|arg| Instruction::DefineVar(arg.into()));
-            instructions.extend(load_instructions);
+            let n = args.len();
+            ((n, false), args)
         }
-        LambdaFormals::VarArgs(arg) => instructions.extend(vec![
-            Instruction::Arity(0, true),
-            Instruction::DefineVar(arg.into()),
-        ]),
+        LambdaFormals::VarArgs(arg) => ((0, true), vec![arg]),
         LambdaFormals::Rest(mut args, rest) => {
-            instructions.push(Instruction::Arity(args.len(), true));
+            let n = args.len();
             args.push(rest);
-            instructions.extend(
-                args.into_iter()
-                    .map(|arg| Instruction::DefineVar(arg.into())),
-            );
+            ((n, true), args)
         }
+    };
+
+    while let Some(arg) = args.pop() {
+        instructions.push(Instruction::DefineVar(arg.into()))
     }
 
     let body = compile_body(datums, true)?;
     instructions.extend(body);
     instructions.push(Instruction::Ret);
-    Ok(vec![Instruction::Lambda(Rc::new(instructions))])
+    Ok(vec![
+        Instruction::Lambda {
+            code: Rc::new(instructions),
+            arity,
+        },
+    ])
 }
 
 fn compile_body(mut datums: VecDeque<Datum>, tail: bool) -> Result<Vec<Instruction>, ParsingError> {
@@ -796,10 +792,15 @@ fn compile_body(mut datums: VecDeque<Datum>, tail: bool) -> Result<Vec<Instructi
 
     let mut instructions = vec![];
 
-    for def in definitions.into_iter().chain(commands.into_iter()) {
+    for def in definitions.into_iter() {
         instructions.extend(def);
+    }
+
+    for command in commands.into_iter() {
+        instructions.extend(command);
         instructions.push(Instruction::Pop);
     }
+
     instructions.extend(expression);
 
     Ok(instructions)

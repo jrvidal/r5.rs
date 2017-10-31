@@ -1,34 +1,65 @@
 
+use super::{shared, ExecutionError, Value, VmState, Branch};
 
-use super::{shared, ExecutionError, Scalar, Value};
+type NatFn = fn(&mut VmState, CallInfo, &Option<Branch>) -> Result<(), ExecutionError>;
+type CallInfo = (usize, bool);
 
-pub(super) fn list(mut values: Vec<Value>) -> Result<Value, ExecutionError> {
-    if values.len() == 0 {
-        return Ok(Value::Scalar(Scalar::EmptyList));
-    }
+pub(super) const STDLIB: [(&'static str, NatFn, CallInfo); 2] = [
+    ("list", list, (0, true)),
+    ("cons", cons, (2, false)),
+];
 
-    let mut pair = Value::Pair {
-        car: shared(values.pop().unwrap()),
-        cdr: shared(Value::Scalar(Scalar::EmptyList)),
-    };
+// By the time a native procedure is called:
+// * The arity has been checked to be correct.
+// * The arguments are in inverse order in the stack: arg_n, ... arg_1
 
-    while let Some(val) = values.pop() {
-        pair = Value::Pair {
-            car: shared(val),
-            cdr: shared(pair),
+macro_rules! simple_native_function {
+    ($fn:ident, $arguments:ident, $body:block) => (
+        pub(super) fn $fn(vm: &mut VmState, call_info: (usize, bool), _: &Option<Branch>) -> Result<(), ExecutionError> {
+            let (passed_args, _is_tail) = call_info;
+
+            fn compute(mut $arguments: Vec<Value>) -> Result<Value, ExecutionError> {
+                $body
+            }
+
+            let mut arguments = vec![];
+            for _ in 0..passed_args {
+                arguments.push(vm.stack.pop().ok_or(ExecutionError::Internal("bad argc"))?);
+            }
+            arguments.reverse();
+
+            let ret = compute(arguments)?;
+            vm.stack.push(ret);
+            Ok(())
         }
-    }
-
-    Ok(pair)
+    )
 }
 
-pub(super) fn cons(mut values: Vec<Value>) -> Result<Value, ExecutionError> {
-    if values.len() != 2 {
-        return Err(ExecutionError::BadArgc);
+fn list(vm: &mut VmState, call_info: (usize, bool), _: &Option<Branch>) -> Result<(), ExecutionError> {
+    let list = vm.pop_as_list(call_info.0).expect("Bad argc");
+    vm.stack.push(list);
+    Ok(())
+}
+
+fn cons(vm: &mut VmState, _: (usize, bool), _: &Option<Branch>) -> Result<(), ExecutionError> {
+    let cdr = shared(vm.stack.pop().expect("bad cdr"));
+    let car = shared(vm.stack.pop().expect("bad car"));
+    vm.stack.push(Value::Pair { car, cdr });
+    Ok(())
+}
+
+
+fn apply(vm: &mut VmState, call_info: (usize, bool), branch: &Option<Branch>) -> Result<(), ExecutionError> {
+    let arg_list = vm.stack.pop().unwrap();
+    if !arg_list.is_list() {
+        return Err(ExecutionError::BadArgType);
     }
-    let cdr = values.pop().unwrap();
-    Ok(Value::Pair {
-        car: shared(values.pop().unwrap()),
-        cdr: shared(cdr),
-    })
+
+    let procedure = vm.stack.pop().unwrap();
+
+    // check proc is proc
+    // if let
+    panic!("foo");
+
+    Ok(())
 }

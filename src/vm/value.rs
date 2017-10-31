@@ -1,13 +1,10 @@
-use std::rc::Rc;
 use gc::{Finalize, Trace};
 use helpers::{CowString, ImmutableString};
 use super::gc::GcShared;
 use super::environment::Environment as GenericEnvironment;
-use super::ExecutionError;
-use compiler::Instruction;
+use super::{Branch, ExecutionError, VmState};
 
 pub type Environment = GenericEnvironment<Value>;
-
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -20,15 +17,30 @@ pub enum Value {
     },
     Vector(Vec<Value>),
     Procedure {
-        code: Rc<Vec<Instruction>>,
+        code: Branch,
         environment: GcShared<Environment>,
+        arity: (usize, bool),
     },
-    NativeProcedure(fn(Vec<Value>) -> Result<Value, ExecutionError>),
+    NativeProcedure(NativeProcedure),
     ReturnRecord {
         environment: GcShared<Environment>,
         address: usize,
-        code: Option<Rc<Vec<Instruction>>>,
+        code: Option<Branch>,
     },
+}
+
+#[derive(Clone)]
+pub struct NativeProcedure {
+    pub(super) fun: fn(&mut VmState, call_info: (usize, bool), branch: &Option<Branch>)
+        -> Result<(), ExecutionError>,
+    pub(super) arity: (usize, bool),
+}
+
+use std::fmt::{Debug, Formatter, Result as FmtResult};
+impl Debug for NativeProcedure {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        write!(f, "NativeProcedure{:?}", self.arity)
+    }
 }
 
 impl Finalize for Value {}
@@ -45,7 +57,7 @@ unsafe impl Trace for Value {
             } => {
                 mark(environment);
             }
-            Value::NativeProcedure(..) => {}
+            Value::NativeProcedure { .. } => {}
             Value::ReturnRecord {
                 ref environment, ..
             } => mark(environment),
@@ -97,7 +109,7 @@ impl Value {
             Value::Scalar(Scalar::Symbol(ref s)) => format!("{}", *s),
             Value::String(ref s) => "\"".to_owned() + &escape(s.into()) + "\"",
             Value::Procedure { .. } => "<procedure>".to_owned(),
-            Value::NativeProcedure(..) => "<procedure>".to_owned(),
+            Value::NativeProcedure { .. } => "<procedure>".to_owned(),
             Value::Vector(ref vals) => {
                 vals.iter()
                     .fold("#(".into(), |acc: String, val| acc + &val.to_repl())
@@ -105,6 +117,14 @@ impl Value {
             }
             ref pair @ Value::Pair { .. } => format!("({})", pair_to_repl(&pair).1),
             ref v => format!("{:?}", v),
+        }
+    }
+
+    pub fn is_list(&self) -> bool {
+        match *self {
+            Value::Pair { ref cdr, .. } => cdr.borrow().is_list(),
+            Value::Scalar(Scalar::EmptyList) => true,
+            _ => false,
         }
     }
 }

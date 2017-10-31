@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use self::stack::Stack;
 use self::gc::shared;
-pub use self::value::{Scalar, Value};
+pub use self::value::{NativeProcedure, Scalar, Value};
 use compiler::Instruction;
 
 pub use self::gc::GcShared;
@@ -14,7 +14,7 @@ mod stack;
 mod value;
 mod stdlib;
 
-const MAX_CALL_STACK_DEPTH: usize = 128;
+const MAX_CALL_STACK_DEPTH: u8 = 255;
 
 impl Newable for GcShared<Environment> {
     fn new(&self) -> GcShared<Environment> {
@@ -41,8 +41,119 @@ pub enum ExecutionError {
     StackOverflow,
     NonCallable,
     BadArgc,
+    BadArgType,
     UnboundVar,
     Internal(&'static str),
+}
+
+type Branch = Rc<Vec<Instruction>>;
+
+#[derive(Debug)]
+struct VmState {
+    pc: usize,
+    environment: GcShared<Environment>,
+    stack: Stack<Value>,
+    call_stack_depth: u8,
+    // None: no changes ; Some(x): set current branch to x
+    next_branch: Option<Option<Branch>>,
+    next_pc: Option<usize>,
+}
+
+impl VmState {
+    fn call(
+        &mut self,
+        tail_call: bool,
+        args_passed: usize,
+        branch: &Option<Branch>,
+    ) -> Result<(), ExecutionError> {
+        use self::ExecutionError::*;
+
+        if self.call_stack_depth >= MAX_CALL_STACK_DEPTH {
+            return Err(StackOverflow);
+        }
+
+        let (fn_details, arity) = match self.stack.pop().ok_or(Internal("No proc"))? {
+            Value::Procedure {
+                code,
+                environment,
+                arity,
+            } => (Ok((code, environment)), arity),
+            Value::NativeProcedure(NativeProcedure { fun, arity }) => (Err(fun), arity),
+            _ => return Err(NonCallable),
+        };
+
+        let native_call = fn_details.is_err();
+
+        let (n_of_args, rest) = arity;
+
+        if (!rest && args_passed != n_of_args) || (rest && args_passed < n_of_args) {
+            return Err(BadArgc);
+        }
+
+        if rest && args_passed == n_of_args && !native_call {
+            self.stack.push(Value::Scalar(Scalar::EmptyList));
+        } else if rest && args_passed > n_of_args && !native_call {
+            let arg_list = self.pop_as_list(args_passed - n_of_args)
+                .ok_or(Internal("No arg"))?;
+            self.stack.push(arg_list);
+        }
+
+        let args_in_stack = n_of_args + if rest { 1 } else { 0 };
+
+        match fn_details {
+            Ok((code, environment)) => {
+                use std::mem;
+                let old_environment = mem::replace(&mut self.environment, environment.new());
+
+                if !tail_call {
+                    self.call_stack_depth += 1;
+
+                    let return_record = Value::ReturnRecord {
+                        environment: old_environment,
+                        address: self.pc + 1,
+                        code: branch.clone(),
+                    };
+                    self.stack.insert(args_in_stack, return_record);
+                }
+
+                self.next_branch = Some(Some(code));
+                self.next_pc = Some(0);
+            }
+            Err(fun) => {
+                fun(self, (args_passed, tail_call), branch)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn pop_as_vec(&mut self, count: usize) -> Option<Vec<Value>> {
+        let mut values = vec![];
+        for _ in 0..count {
+            if let Some(val) = self.stack.pop() {
+                values.push(val);
+            } else {
+                return None;
+            }
+        }
+        Some(values)
+    }
+
+    fn pop_as_list(&mut self, count: usize) -> Option<Value> {
+        let mut pair = Value::Scalar(Scalar::EmptyList);
+
+
+        for _ in 0..count {
+            pair = Value::Pair {
+                cdr: shared(pair),
+                car: match self.stack.pop() {
+                    Some(val) => shared(val),
+                    None => return None,
+                },
+            }
+        }
+
+        Some(pair)
+    }
 }
 
 
@@ -52,239 +163,182 @@ pub fn exec(
 ) -> Result<Value, ExecutionError> {
     use self::ExecutionError::*;
 
-    let mut pc = 0;
-    let mut stack = Stack::default();
-    let mut current_env = environment;
-    let mut compiled_code: Option<Rc<Vec<Instruction>>> = None;
-    let mut next_compiled_code = None;
-    let mut call_stack_depth = 0;
+    let mut vm = VmState {
+        pc: 0,
+        environment: environment,
+        stack: Stack::default(),
+        call_stack_depth: 0,
+        next_pc: None,
+        next_branch: None,
+    };
+    let mut branch: Option<Branch> = None;
 
     loop {
-        compiled_code = next_compiled_code.unwrap_or(compiled_code);
-        next_compiled_code = None;
-        let instruction: &Instruction = if let Some(ref compiled_code) = compiled_code {
-            &compiled_code[pc]
-        } else {
-            if pc >= bytecode.len() {
-                break;
-            } else {
-                &bytecode[pc]
-            }
-        };
+        // Bleugh, moved here from the bottom to avoid an extra pair of braces
+        branch = vm.next_branch.unwrap_or(branch);
+
+        debug!("{:?}", (&branch, vm.pc));
+
+        match branch {
+            None if bytecode.len() == vm.pc => break,
+            None if vm.pc > bytecode.len() => return Err(Internal("PC overflow")),
+            Some(ref b) if vm.pc >= b.len() => return Err(Internal("Ret not encountered")),
+            _ => {}
+        }
+
+        vm.next_pc = None;
+        vm.next_branch = None;
+
+        let instruction = branch
+            .as_ref()
+            .map(|branch| &(**branch)[vm.pc])
+            .or(bytecode.get(vm.pc))
+            .ok_or(Internal("PC overflow"))?;
+
         debug!(
             "pc {:?}\tcode: {:?}\tdepth: {:?}\n\t stack: {:?}",
-            pc,
+            vm.pc,
             instruction,
-            call_stack_depth,
-            stack
+            vm.call_stack_depth,
+            vm.stack
         );
-        let mut next_pc = None;
 
         match *instruction {
             Instruction::Character(c) => {
-                stack.push(Value::Scalar(Scalar::Character(c)));
+                vm.stack.push(Value::Scalar(Scalar::Character(c)));
             }
             Instruction::Boolean(b) => {
-                stack.push(Value::Scalar(Scalar::Boolean(b)));
+                vm.stack.push(Value::Scalar(Scalar::Boolean(b)));
             }
             Instruction::Symbol(ref s) => {
-                stack.push(Value::Scalar(Scalar::Symbol(s.clone())));
+                vm.stack.push(Value::Scalar(Scalar::Symbol(s.clone())));
             }
             Instruction::Integer(n) => {
-                stack.push(Value::Scalar(Scalar::Integer(n)));
+                vm.stack.push(Value::Scalar(Scalar::Integer(n)));
             }
             Instruction::Nil => {
-                stack.push(Value::Scalar(Scalar::Nil));
+                vm.stack.push(Value::Scalar(Scalar::Nil));
             }
             Instruction::String(ref s) => {
-                stack.push(Value::String(s.clone()));
+                vm.stack.push(Value::String(s.clone()));
             }
             Instruction::Number => {
-                stack.push(Value::Number);
+                vm.stack.push(Value::Number);
             }
             Instruction::EmptyList => {
-                stack.push(Value::Scalar(Scalar::EmptyList));
+                vm.stack.push(Value::Scalar(Scalar::EmptyList));
             }
-            // Instruction::Pop => { stack.pop(); },
             Instruction::Pair => {
-                let car = stack.pop().expect("No car");
-                let cdr = stack.pop().expect("No cdr");
+                let car = vm.stack.pop().expect("No car");
+                let cdr = vm.stack.pop().expect("No cdr");
                 let pair = Value::Pair {
                     car: shared(car),
                     cdr: shared(cdr),
                 };
-                stack.push(pair);
+                vm.stack.push(pair);
             }
             Instruction::Vector(n) => {
                 let mut vector = vec![];
                 for _ in 0..n {
-                    vector.push(stack.pop().expect("vector entry"));
+                    vector.push(vm.stack.pop().expect("vector entry"));
                 }
-                stack.push(Value::Vector(vector));
+                vm.stack.push(Value::Vector(vector));
             }
             // Stack in reverse order:
             // a_n, ..., a_1, ...
             Instruction::List(0, false) => {
-                stack.push(Value::Scalar(Scalar::EmptyList));
+                vm.stack.push(Value::Scalar(Scalar::EmptyList));
             }
             Instruction::List(n, improper) => {
                 let cdr = if improper {
-                    stack.pop().unwrap()
+                    vm.stack.pop().unwrap()
                 } else {
                     Value::Scalar(Scalar::EmptyList)
                 };
 
                 let mut pair = Value::Pair {
-                    car: shared(stack.pop().unwrap()),
+                    car: shared(vm.stack.pop().unwrap()),
                     cdr: shared(cdr),
                 };
 
                 let rest = if improper { n } else { n - 1 };
 
                 for _ in 0..rest {
-                    let val = stack.pop().unwrap();
+                    let val = vm.stack.pop().unwrap();
                     pair = Value::Pair {
                         car: shared(val),
                         cdr: shared(pair),
                     };
                 }
-                stack.push(pair);
+                vm.stack.push(pair);
             }
-            Instruction::Lambda(ref code) => {
-                let environment = current_env.clone();
+            Instruction::Lambda { ref code, arity } => {
+                let environment = vm.environment.clone();
                 let procedure = Value::Procedure {
                     code: code.clone(),
                     environment,
+                    arity,
                 };
-                stack.push(procedure);
+                vm.stack.push(procedure);
             }
+
             // Stack:                End stack:
-            // * n_of_args           * n_of_args
             // * proc                * arg1
             // * arg1                * ...
             // * ...                 * return_record
-            Instruction::Call(tail) => {
-                if call_stack_depth > MAX_CALL_STACK_DEPTH {
-                    return Err(StackOverflow);
-                }
-
-                let val = stack.swap_remove(1);
-                let (code, environment) = match val {
-                    Value::Procedure { code, environment } => (code, environment),
-                    Value::NativeProcedure(fun) => {
-                        call_native_procedure(&mut stack, fun)?;
-                        pc += 1;
-                        continue;
-                    }
-                    _ => return Err(NonCallable),
-                };
-
-                let environment = environment.new();
-
-                if !tail {
-                    call_stack_depth += 1;
-
-                    let n_of_args = match stack.get(0) {
-                        Some(&Value::Scalar(Scalar::Integer(ref n))) if *n >= 0 => *n as usize,
-                        _ => return Err(Internal("no argc on stack")),
-                    };
-
-                    let return_record = Value::ReturnRecord {
-                        environment: current_env,
-                        address: pc + 1,
-                        code: compiled_code.clone(),
-                    };
-                    stack.insert(n_of_args + 1, return_record);
-                }
-
-                current_env = environment;
-                next_compiled_code = Some(Some(code));
-                next_pc = Some(0);
-            }
-            Instruction::Arity(n_of_args, rest) => {
-                let args_passed = match stack.pop() {
-                    Some(Value::Scalar(Scalar::Integer(n))) if n >= 0 => n as usize,
-                    _ => return Err(Internal("no argc on stack")),
-                };
-
-                if !rest {
-                    if n_of_args == args_passed {
-                        pc += 1;
-                        continue;
-                    } else {
-                        return Err(BadArgc);
-                    }
-                }
-
-                if n_of_args > 0 && args_passed < n_of_args {
-                    return Err(BadArgc);
-                }
-
-                let diff = args_passed - n_of_args;
-                let mut rest_args = vec![];
-                for _ in 0..diff {
-                    rest_args.push(stack.remove(n_of_args));
-                }
-
-                let mut pair = Value::Scalar(Scalar::EmptyList);
-                while rest_args.len() > 0 {
-                    let car = rest_args.pop().unwrap();
-                    pair = Value::Pair {
-                        car: shared(car),
-                        cdr: shared(pair),
-                    };
-                }
-                stack.insert(n_of_args, pair);
-            }
+            Instruction::Call(tail_call, args_passed) => vm.call(tail_call, args_passed, &branch)?,
             Instruction::SetVar(ref var_name) => {
-                let value = stack.pop().unwrap();
-                current_env
+                let value = vm.stack.pop().unwrap();
+                vm.environment
                     .borrow_mut()
                     .set(var_name.clone(), value.clone());
-                stack.push(Value::Scalar(Scalar::Nil));
+                vm.stack.push(Value::Scalar(Scalar::Nil));
             }
             Instruction::LoadVar(ref var_name) => {
-                let value = current_env.borrow().get(var_name.clone()).ok_or(UnboundVar)?;
-                stack.push(value);
+                let value = vm.environment
+                    .borrow()
+                    .get(var_name.clone())
+                    .ok_or(UnboundVar)?;
+                vm.stack.push(value);
             }
             Instruction::DefineVar(ref var_name) => {
-                let value = stack.pop().expect("set var");
-                current_env.borrow_mut().define(var_name.clone(), value);
+                let value = vm.stack.pop().expect("set var");
+                vm.environment.borrow_mut().define(var_name.clone(), value);
             }
             Instruction::BranchUnless(n) => {
-                let cond: bool = (&stack.pop().expect("test")).into();
+                let cond: bool = (&vm.stack.pop().expect("test")).into();
                 if !cond {
-                    next_pc = Some(pc + n);
+                    vm.next_pc = Some(vm.pc + n);
                 }
             }
             Instruction::BranchIf(n) => {
-                let cond: bool = (&stack.pop().expect("test")).into();
+                let cond: bool = (&vm.stack.pop().expect("test")).into();
                 if cond {
-                    next_pc = Some(pc + n);
+                    vm.next_pc = Some(vm.pc + n);
                 }
             }
             Instruction::ROBranchUnless(n) => {
-                let cond: bool = (&stack[0]).into();
+                let cond: bool = (&vm.stack[0]).into();
                 if !cond {
-                    next_pc = Some(pc + n);
+                    vm.next_pc = Some(vm.pc + n);
                 }
             }
             Instruction::ROBranchIf(n) => {
-                let cond: bool = (&stack[0]).into();
+                let cond: bool = (&vm.stack[0]).into();
                 if cond {
-                    next_pc = Some(pc + n);
+                    vm.next_pc = Some(vm.pc + n);
                 }
             }
             Instruction::Branch(n) => {
-                next_pc = Some(pc + n);
+                vm.next_pc = Some(vm.pc + n);
             }
             // Stack:
             // * ret_value
             // * return_record
             Instruction::Ret => {
-                call_stack_depth -= 1;
+                vm.call_stack_depth -= 1;
 
-                let return_record = stack.swap_remove(1);
+                let return_record = vm.stack.swap_remove(1);
 
                 let (ra, environment, code) = if let Value::ReturnRecord {
                     environment,
@@ -297,73 +351,51 @@ pub fn exec(
                     return Err(Internal("no return record on stack"));
                 };
 
-                current_env = environment;
-                next_compiled_code = Some(code);
-                next_pc = Some(ra);
+                vm.environment = environment;
+                vm.next_branch = Some(code);
+                vm.next_pc = Some(ra);
             }
             Instruction::Pop => {
-                stack.pop();
+                vm.stack.pop();
             }
             Instruction::NewEnv => {
-                current_env = current_env.new();
+                vm.environment = vm.environment.new();
             }
             Instruction::PopEnv => {
-                let parent = current_env.borrow().parent.as_ref().unwrap().clone();
-                current_env = parent;
+                let parent = vm.environment.borrow().parent.as_ref().unwrap().clone();
+                vm.environment = parent;
             }
             Instruction::And => {
-                let value1 = stack.pop().unwrap();
+                let value1 = vm.stack.pop().unwrap();
                 let cond1: bool = (&value1).into();
-                let value2 = stack.pop().unwrap();
+                let value2 = vm.stack.pop().unwrap();
                 let result = cond1 && (&value2).into();
-                stack.push(Value::Scalar(Scalar::Boolean(result)));
+                vm.stack.push(Value::Scalar(Scalar::Boolean(result)));
             }
             Instruction::Or => {
-                let value1 = stack.pop().unwrap();
+                let value1 = vm.stack.pop().unwrap();
                 let cond1: bool = (&value1).into();
-                let value2 = stack.pop().unwrap();
+                let value2 = vm.stack.pop().unwrap();
                 let result = cond1 || (&value2).into();
-                stack.push(Value::Scalar(Scalar::Boolean(result)));
+                vm.stack.push(Value::Scalar(Scalar::Boolean(result)));
             }
         }
 
-        pc = next_pc.unwrap_or(pc + 1);
-
-        if compiled_code.is_none() && bytecode.len() == pc {
-            break;
-        }
+        vm.pc = vm.next_pc.unwrap_or(vm.pc + 1);
     }
 
-    stack.pop().ok_or(Internal("Empty stack"))
+    vm.stack.pop().ok_or(Internal("Empty stack"))
 }
-
-
-fn call_native_procedure(
-    stack: &mut Stack<Value>,
-    fun: fn(Vec<Value>) -> Result<Value, ExecutionError>,
-) -> Result<(), ExecutionError> {
-    let n = match stack.pop() {
-        Some(Value::Scalar(Scalar::Integer(n))) if n >= 0 => n as usize,
-        _ => return Err(ExecutionError::Internal("no argc on stack")),
-    };
-
-    let mut values = vec![];
-    for _ in 0..n {
-        values.push(stack
-            .pop()
-            .ok_or(ExecutionError::Internal("insufficient args"))?);
-    }
-    fun(values).map(|ret| {
-        stack.push(ret);
-        ()
-    })
-}
-
 
 pub fn default_env() -> GcShared<Environment> {
     let mut env = Environment::default();
 
-    env.define("list".into(), Value::NativeProcedure(stdlib::list));
-    env.define("cons".into(), Value::NativeProcedure(stdlib::cons));
+    for &(name, fun, arity) in stdlib::STDLIB.iter() {
+        env.define(
+            name.into(),
+            Value::NativeProcedure(NativeProcedure { fun, arity }),
+        );
+    }
+
     shared(env)
 }
