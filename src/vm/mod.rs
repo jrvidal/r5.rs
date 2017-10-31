@@ -14,7 +14,7 @@ mod stack;
 mod value;
 mod stdlib;
 
-const MAX_CALL_STACK_DEPTH: u8 = 255;
+const MAX_CALL_STACK_DEPTH: usize = 255;
 
 impl Newable for GcShared<Environment> {
     fn new(&self) -> GcShared<Environment> {
@@ -49,11 +49,18 @@ pub enum ExecutionError {
 type Branch = Rc<Vec<Instruction>>;
 
 #[derive(Debug)]
+struct ReturnRecord {
+    environment: GcShared<Environment>,
+    address: usize,
+    code: Option<Branch>,
+}
+
+#[derive(Debug)]
 struct VmState {
     pc: usize,
     environment: GcShared<Environment>,
     stack: Stack<Value>,
-    call_stack_depth: u8,
+    call_stack: Stack<ReturnRecord>,
     // None: no changes ; Some(x): set current branch to x
     next_branch: Option<Option<Branch>>,
     next_pc: Option<usize>,
@@ -68,7 +75,7 @@ impl VmState {
     ) -> Result<(), ExecutionError> {
         use self::ExecutionError::*;
 
-        if self.call_stack_depth >= MAX_CALL_STACK_DEPTH {
+        if self.call_stack.len() >= MAX_CALL_STACK_DEPTH {
             return Err(StackOverflow);
         }
 
@@ -106,14 +113,15 @@ impl VmState {
                 let old_environment = mem::replace(&mut self.environment, environment.new());
 
                 if !tail_call {
-                    self.call_stack_depth += 1;
+                    // self.call_stack_depth += 1;
 
-                    let return_record = Value::ReturnRecord {
+                    let return_record = ReturnRecord {
                         environment: old_environment,
                         address: self.pc + 1,
                         code: branch.clone(),
                     };
-                    self.stack.insert(args_in_stack, return_record);
+                    self.call_stack.push(return_record);
+                    // self.stack.insert(args_in_stack, return_record);
                 }
 
                 self.next_branch = Some(Some(code));
@@ -167,7 +175,7 @@ pub fn exec(
         pc: 0,
         environment: environment,
         stack: Stack::default(),
-        call_stack_depth: 0,
+        call_stack: Stack::default(),
         next_pc: None,
         next_branch: None,
     };
@@ -199,7 +207,7 @@ pub fn exec(
             "pc {:?}\tcode: {:?}\tdepth: {:?}\n\t stack: {:?}",
             vm.pc,
             instruction,
-            vm.call_stack_depth,
+            vm.call_stack.len(),
             vm.stack
         );
 
@@ -336,24 +344,30 @@ pub fn exec(
             // * ret_value
             // * return_record
             Instruction::Ret => {
-                vm.call_stack_depth -= 1;
+                let return_record = vm.call_stack
+                    .pop()
+                    .ok_or(Internal("No return record on stack"))?;
 
-                let return_record = vm.stack.swap_remove(1);
-
-                let (ra, environment, code) = if let Value::ReturnRecord {
-                    environment,
+                let ReturnRecord {
                     address,
+                    environment,
                     code,
-                } = return_record
-                {
-                    (address, environment, code)
-                } else {
-                    return Err(Internal("no return record on stack"));
-                };
+                } = return_record;
+
+                // let (ra, environment, code) = if let Value::ReturnRecord {
+                //     environment,
+                //     address,
+                //     code,
+                // } = return_record
+                // {
+                //     (address, environment, code)
+                // } else {
+                //     return Err(Internal("no return record on stack"));
+                // };
 
                 vm.environment = environment;
                 vm.next_branch = Some(code);
-                vm.next_pc = Some(ra);
+                vm.next_pc = Some(address);
             }
             Instruction::Pop => {
                 vm.stack.pop();
