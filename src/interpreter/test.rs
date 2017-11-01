@@ -74,3 +74,32 @@ fn basic_call_varargs() {
     assert_eq![&*list2.0.borrow(), &Value::Symbol("b".into())];
     assert_eq![&*list2.1.borrow(), &Value::EmptyList];
 }
+
+#[test]
+fn stdlib_apply_argc() {
+    assert_eq![with_std!["(apply)"], rt_err![BadArgc]];
+    assert_eq![with_std!["(apply 'a)"], rt_err![BadArgc]];
+    assert_eq![with_std!["(apply 'a 'b 'c)"], rt_err![BadArgc]];
+}
+
+#[test]
+fn stdlib_apply_argtype() {
+    assert_eq![with_std!["(apply 'a '())"], rt_err![NonCallable]];
+    assert_eq![with_std!["(apply apply 'a)"], rt_err![BadArgType]];
+}
+
+#[test]
+fn stdlib_apply_basic() {
+    let ret = with_std!["(apply (lambda (x . y) y) '(a b))"].expect("valid call");
+    let list = ret.pair().expect("valid pair");
+    assert_eq![&*list.0.borrow(), &Value::Symbol("b".into())];
+    assert_eq![&*list.1.borrow(), &Value::EmptyList];
+}
+
+#[test]
+fn stdlib_apply_basic_native() {
+    let ret = with_std!["(apply list '(a))"].expect("valid call");
+    let list = ret.pair().expect("valid pair");
+    assert_eq![&*list.0.borrow(), &Value::Symbol("a".into())];
+    assert_eq![&*list.1.borrow(), &Value::EmptyList];
+}

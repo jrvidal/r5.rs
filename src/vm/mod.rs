@@ -159,6 +159,23 @@ impl VmState {
 
         Some(pair)
     }
+
+    fn push_list(&mut self, list: Value) {
+        if let Value::Pair { car, cdr } = list {
+            let mut list = cdr;
+            self.stack.push(car.borrow().clone());
+
+            loop {
+                let clone = list.borrow().clone();
+                if let Value::Pair { car, cdr } = clone {
+                    list = cdr;
+                    self.stack.push(car.borrow().clone());
+                } else {
+                    break;
+                }
+            }
+        }
+    }
 }
 
 

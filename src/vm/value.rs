@@ -175,6 +175,14 @@ impl Value {
         }
     }
 
+    pub fn list_len(&self) -> Option<usize> {
+        match *self {
+            Value::EmptyList => Some(0),
+            Value::Pair { ref cdr, .. } => cdr.borrow().list_len().map(|l| l + 1),
+            _ => None,
+        }
+    }
+
     pub fn pair(&self) -> Option<(&GcShared<Value>, &GcShared<Value>)> {
         match *self {
             Value::Pair { ref car, ref cdr } => Some((car, cdr)),

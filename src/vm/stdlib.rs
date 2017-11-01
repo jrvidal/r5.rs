@@ -4,9 +4,10 @@ use super::{shared, ExecutionError, Value, VmState, Branch};
 type NatFn = fn(&mut VmState, CallInfo, &Option<Branch>) -> Result<(), ExecutionError>;
 type CallInfo = (usize, bool);
 
-pub(super) const STDLIB: [(&'static str, NatFn, CallInfo); 2] = [
+pub(super) const STDLIB: [(&'static str, NatFn, CallInfo); 3] = [
     ("list", list, (0, true)),
     ("cons", cons, (2, false)),
+    ("apply", apply, (2, false)),
 ];
 
 // By the time a native procedure is called:
@@ -49,17 +50,21 @@ fn cons(vm: &mut VmState, _: (usize, bool), _: &Option<Branch>) -> Result<(), Ex
 }
 
 
-// fn apply(vm: &mut VmState, call_info: (usize, bool), branch: &Option<Branch>) -> Result<(), ExecutionError> {
-//     let arg_list = vm.stack.pop().unwrap();
-//     if !arg_list.is_list() {
-//         return Err(ExecutionError::BadArgType);
-//     }
+fn apply(vm: &mut VmState, call_info: (usize, bool), branch: &Option<Branch>) -> Result<(), ExecutionError> {
+    let arg_list = vm.stack.pop().unwrap();
+    if !arg_list.is_list() {
+        return Err(ExecutionError::BadArgType);
+    }
+    let args_passed = arg_list.list_len().unwrap();
 
-//     let procedure = vm.stack.pop().unwrap();
+    let procedure = vm.stack.pop().unwrap();
 
-//     // check proc is proc
-//     // if let
-//     panic!("foo");
+    match procedure {
+      Value::Procedure { .. } | Value::NativeProcedure { .. } => {},
+      _ => return Err(ExecutionError::NonCallable)
+    }
 
-//     Ok(())
-// }
+    vm.push_list(arg_list);
+    vm.stack.push(procedure);
+    vm.call(call_info.1, args_passed, branch)
+}
