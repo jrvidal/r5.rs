@@ -5,7 +5,7 @@ use reader::{AbbreviationKind, Datum};
 use self::keywords::is_syntactic_keyword;
 use helpers::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
     // *** Push simple scalars
     Integer(isize),

@@ -11,23 +11,23 @@ impl<T> Stack<T> {
     pub fn pop(&mut self) -> Option<T> {
         self.0.pop()
     }
-    pub fn insert(&mut self, index: usize, it: T) {
-        // This one is different
-        let i = self.len() - index;
-        self.0.insert(i, it)
-    }
-    pub fn get(&mut self, index: usize) -> Option<&T> {
-        let i = self.index(index);
-        self.0.get(i)
-    }
-    pub fn remove(&mut self, index: usize) -> T {
-        let i = self.index(index);
-        self.0.remove(i)
-    }
-    pub fn swap_remove(&mut self, index: usize) -> T {
-        let i = self.index(index);
-        self.0.swap_remove(i)
-    }
+    // pub fn insert(&mut self, index: usize, it: T) {
+    //     // This one is different
+    //     let i = self.len() - index;
+    //     self.0.insert(i, it)
+    // }
+    // pub fn get(&mut self, index: usize) -> Option<&T> {
+    //     let i = self.index(index);
+    //     self.0.get(i)
+    // }
+    // pub fn remove(&mut self, index: usize) -> T {
+    //     let i = self.index(index);
+    //     self.0.remove(i)
+    // }
+    // pub fn swap_remove(&mut self, index: usize) -> T {
+    //     let i = self.index(index);
+    //     self.0.swap_remove(i)
+    // }
 
     pub fn len(&self) -> usize {
         self.0.len()

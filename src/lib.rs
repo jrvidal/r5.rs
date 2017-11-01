@@ -11,3 +11,4 @@ pub mod lexer;
 pub mod reader;
 pub mod compiler;
 pub mod vm;
+mod interpreter;

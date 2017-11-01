@@ -13,27 +13,27 @@ pub(super) const STDLIB: [(&'static str, NatFn, CallInfo); 2] = [
 // * The arity has been checked to be correct.
 // * The arguments are in inverse order in the stack: arg_n, ... arg_1
 
-macro_rules! simple_native_function {
-    ($fn:ident, $arguments:ident, $body:block) => (
-        pub(super) fn $fn(vm: &mut VmState, call_info: (usize, bool), _: &Option<Branch>) -> Result<(), ExecutionError> {
-            let (passed_args, _is_tail) = call_info;
+// macro_rules! simple_native_function {
+//     ($fn:ident, $arguments:ident, $body:block) => (
+//         pub(super) fn $fn(vm: &mut VmState, call_info: (usize, bool), _: &Option<Branch>) -> Result<(), ExecutionError> {
+//             let (passed_args, _is_tail) = call_info;
 
-            fn compute(mut $arguments: Vec<Value>) -> Result<Value, ExecutionError> {
-                $body
-            }
+//             fn compute(mut $arguments: Vec<Value>) -> Result<Value, ExecutionError> {
+//                 $body
+//             }
 
-            let mut arguments = vec![];
-            for _ in 0..passed_args {
-                arguments.push(vm.stack.pop().ok_or(ExecutionError::Internal("bad argc"))?);
-            }
-            arguments.reverse();
+//             let mut arguments = vec![];
+//             for _ in 0..passed_args {
+//                 arguments.push(vm.stack.pop().ok_or(ExecutionError::Internal("bad argc"))?);
+//             }
+//             arguments.reverse();
 
-            let ret = compute(arguments)?;
-            vm.stack.push(ret);
-            Ok(())
-        }
-    )
-}
+//             let ret = compute(arguments)?;
+//             vm.stack.push(ret);
+//             Ok(())
+//         }
+//     )
+// }
 
 fn list(vm: &mut VmState, call_info: (usize, bool), _: &Option<Branch>) -> Result<(), ExecutionError> {
     let list = vm.pop_as_list(call_info.0).expect("Bad argc");
@@ -49,17 +49,17 @@ fn cons(vm: &mut VmState, _: (usize, bool), _: &Option<Branch>) -> Result<(), Ex
 }
 
 
-fn apply(vm: &mut VmState, call_info: (usize, bool), branch: &Option<Branch>) -> Result<(), ExecutionError> {
-    let arg_list = vm.stack.pop().unwrap();
-    if !arg_list.is_list() {
-        return Err(ExecutionError::BadArgType);
-    }
+// fn apply(vm: &mut VmState, call_info: (usize, bool), branch: &Option<Branch>) -> Result<(), ExecutionError> {
+//     let arg_list = vm.stack.pop().unwrap();
+//     if !arg_list.is_list() {
+//         return Err(ExecutionError::BadArgType);
+//     }
 
-    let procedure = vm.stack.pop().unwrap();
+//     let procedure = vm.stack.pop().unwrap();
 
-    // check proc is proc
-    // if let
-    panic!("foo");
+//     // check proc is proc
+//     // if let
+//     panic!("foo");
 
-    Ok(())
-}
+//     Ok(())
+// }

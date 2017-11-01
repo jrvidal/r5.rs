@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use self::stack::Stack;
 use self::gc::shared;
-pub use self::value::{NativeProcedure, Scalar, Value};
+pub use self::value::{NativeProcedure, Value};
 use compiler::Instruction;
 
 pub use self::gc::GcShared;
@@ -36,7 +36,7 @@ trait Newable {
     fn new(&self) -> Self;
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ExecutionError {
     StackOverflow,
     NonCallable,
@@ -98,14 +98,12 @@ impl VmState {
         }
 
         if rest && args_passed == n_of_args && !native_call {
-            self.stack.push(Value::Scalar(Scalar::EmptyList));
+            self.stack.push(Value::EmptyList);
         } else if rest && args_passed > n_of_args && !native_call {
             let arg_list = self.pop_as_list(args_passed - n_of_args)
                 .ok_or(Internal("No arg"))?;
             self.stack.push(arg_list);
         }
-
-        let args_in_stack = n_of_args + if rest { 1 } else { 0 };
 
         match fn_details {
             Ok((code, environment)) => {
@@ -113,15 +111,12 @@ impl VmState {
                 let old_environment = mem::replace(&mut self.environment, environment.new());
 
                 if !tail_call {
-                    // self.call_stack_depth += 1;
-
                     let return_record = ReturnRecord {
                         environment: old_environment,
                         address: self.pc + 1,
                         code: branch.clone(),
                     };
                     self.call_stack.push(return_record);
-                    // self.stack.insert(args_in_stack, return_record);
                 }
 
                 self.next_branch = Some(Some(code));
@@ -134,6 +129,8 @@ impl VmState {
         Ok(())
     }
 
+    // TODO
+    #[allow(dead_code)]
     fn pop_as_vec(&mut self, count: usize) -> Option<Vec<Value>> {
         let mut values = vec![];
         for _ in 0..count {
@@ -147,7 +144,7 @@ impl VmState {
     }
 
     fn pop_as_list(&mut self, count: usize) -> Option<Value> {
-        let mut pair = Value::Scalar(Scalar::EmptyList);
+        let mut pair = Value::EmptyList;
 
 
         for _ in 0..count {
@@ -213,28 +210,28 @@ pub fn exec(
 
         match *instruction {
             Instruction::Character(c) => {
-                vm.stack.push(Value::Scalar(Scalar::Character(c)));
+                vm.stack.push(Value::Character(c));
             }
             Instruction::Boolean(b) => {
-                vm.stack.push(Value::Scalar(Scalar::Boolean(b)));
+                vm.stack.push(Value::Boolean(b));
             }
             Instruction::Symbol(ref s) => {
-                vm.stack.push(Value::Scalar(Scalar::Symbol(s.clone())));
+                vm.stack.push(Value::Symbol(s.clone()));
             }
             Instruction::Integer(n) => {
-                vm.stack.push(Value::Scalar(Scalar::Integer(n)));
+                vm.stack.push(Value::Integer(n));
             }
             Instruction::Nil => {
-                vm.stack.push(Value::Scalar(Scalar::Nil));
+                vm.stack.push(Value::Nil);
             }
             Instruction::String(ref s) => {
-                vm.stack.push(Value::String(s.clone()));
+                vm.stack.push(Value::String(shared(s.into())));
             }
             Instruction::Number => {
                 vm.stack.push(Value::Number);
             }
             Instruction::EmptyList => {
-                vm.stack.push(Value::Scalar(Scalar::EmptyList));
+                vm.stack.push(Value::EmptyList);
             }
             Instruction::Pair => {
                 let car = vm.stack.pop().expect("No car");
@@ -250,18 +247,18 @@ pub fn exec(
                 for _ in 0..n {
                     vector.push(vm.stack.pop().expect("vector entry"));
                 }
-                vm.stack.push(Value::Vector(vector));
+                vm.stack.push(Value::Vector(shared(vector)));
             }
             // Stack in reverse order:
             // a_n, ..., a_1, ...
             Instruction::List(0, false) => {
-                vm.stack.push(Value::Scalar(Scalar::EmptyList));
+                vm.stack.push(Value::EmptyList);
             }
             Instruction::List(n, improper) => {
                 let cdr = if improper {
                     vm.stack.pop().unwrap()
                 } else {
-                    Value::Scalar(Scalar::EmptyList)
+                    Value::EmptyList
                 };
 
                 let mut pair = Value::Pair {
@@ -300,7 +297,7 @@ pub fn exec(
                 vm.environment
                     .borrow_mut()
                     .set(var_name.clone(), value.clone());
-                vm.stack.push(Value::Scalar(Scalar::Nil));
+                vm.stack.push(Value::Nil);
             }
             Instruction::LoadVar(ref var_name) => {
                 let value = vm.environment
@@ -384,14 +381,14 @@ pub fn exec(
                 let cond1: bool = (&value1).into();
                 let value2 = vm.stack.pop().unwrap();
                 let result = cond1 && (&value2).into();
-                vm.stack.push(Value::Scalar(Scalar::Boolean(result)));
+                vm.stack.push(Value::Boolean(result));
             }
             Instruction::Or => {
                 let value1 = vm.stack.pop().unwrap();
                 let cond1: bool = (&value1).into();
                 let value2 = vm.stack.pop().unwrap();
                 let result = cond1 || (&value2).into();
-                vm.stack.push(Value::Scalar(Scalar::Boolean(result)));
+                vm.stack.push(Value::Boolean(result));
             }
         }
 
