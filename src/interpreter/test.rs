@@ -103,3 +103,33 @@ fn stdlib_apply_basic_native() {
     assert_eq![&*list.0.borrow(), &Value::Symbol("a".into())];
     assert_eq![&*list.1.borrow(), &Value::EmptyList];
 }
+
+#[test]
+fn cond_basic() {
+    assert_eq![with_null!["(cond (#t 'a))"], Ok(Value::Symbol("a".into()))];
+}
+
+#[test]
+fn cond_empty() {
+    assert_eq![with_null!["(cond (#f 'a))"], Ok(Value::Nil)];
+}
+
+#[test]
+fn cond_cascade() {
+    assert_eq![with_null!["(cond (((lambda () #f)) 'a) (1 'b))"], Ok(Value::Symbol("b".into()))];
+}
+
+#[test]
+fn cond_test_only() {
+    assert_eq![with_null!["(cond ('a))"], Ok(Value::Symbol("a".into()))];
+}
+
+#[test]
+fn cond_arrow() {
+    assert_eq![with_std!["(cond ('(a b) => car))"], Ok(Value::Symbol("a".into()))];
+}
+
+#[test]
+fn cond_arrow_false() {
+    assert_eq![with_null!["(cond (#f => car) (#t 'z))"], Ok(Value::Symbol("z".into()))];
+}

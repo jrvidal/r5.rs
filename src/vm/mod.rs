@@ -304,6 +304,14 @@ pub fn exec(
                 vm.stack.push(procedure);
             }
 
+            Instruction::Arity(n, rest) => {
+                match vm.stack.get(0) {
+                    Some(&Value::Procedure { arity: (m, r) , ..}) if m == n && rest == r => {},
+                    Some(&Value::NativeProcedure(NativeProcedure { arity: (m, r) , ..})) if m == n && rest == r => {},
+                    _ => return Err(ExecutionError::BadArgType)
+                }
+            },
+
             // Stack:                End stack:
             // * proc                * arg1
             // * arg1                * ...

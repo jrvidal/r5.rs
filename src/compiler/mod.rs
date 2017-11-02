@@ -20,6 +20,8 @@ pub enum Instruction {
     // ***
     // Call(is_tail, n_of_args), save return environment if it's not tail
     Call(bool, usize),
+    // Arity check for a procedure, read-only
+    Arity(usize, bool),
     // Return, restore return environment
     Ret,
     // Branch +n unconditionally
@@ -354,30 +356,123 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
             return compile_lambda_exp(formals, datums);
         }
 
-        // (keywords::COND, l) if l >= 1 => {
-        //     let else_expressions = parse_else_clause(&mut datums)?;
+        (keywords::COND, l) if l >= 1 => {
+            let else_expressions = compile_else_clause(&mut datums, tail)?;
 
-        //     let mut clauses = datums
-        //         .into_iter()
-        //         .map(parse_cond_clause_exp)
-        //         .collect::<Result<Vec<CondClause>, ParsingError>>()?;
+            let mut clauses = vec![];
+            let mut total_len = else_expressions.as_ref().map(|e| e.len()).unwrap_or(1);
 
-        //     let derived = match else_expressions {
-        //         Some((else_commands, else_expression)) => Derived::CondElse {
-        //             clauses,
-        //             else_commands,
-        //             else_expression,
-        //         },
-        //         None => {
-        //             let head_clause = clauses.remove(0);
-        //                 head_clause,
-        //                 tail_clauses: clauses,
-        //             }
-        //         }
-        //     };
+            for datum in datums.into_iter() {
+                let mut datums = if let Datum::List(datums) = datum {
+                    datums
+                } else {
+                    return Err(ParsingError::Illegal);
+                };
 
-        //     Ok(Expression::Derived(derived))
-        // }
+                check![datums.len() >= 1, ParsingError::Illegal];
+
+                let arrow = match datums.get(1) {
+                    Some(&Datum::Symbol(ref s)) if s == keywords::ARROW => true,
+                    _ => false
+                };
+
+                check![!(arrow && datums.len() != 3), ParsingError::Illegal];
+
+                if arrow {
+                    datums.remove(1);
+                }
+
+                // Weird, but `test` is *never* in tail position, even if it's the only expression in a clause
+                let test = compile_expression_inner(datums.pop_front().unwrap(), false)?;
+                // <test> plus conditional branch
+                total_len += test.len() + 1;
+
+                let sequence = if arrow {
+                    // Extra instructions: arity, call, pop
+                    total_len += 3;
+                    datums.compiled()?
+                } else {
+                    compile_sequence(datums, tail)?
+                };
+
+                // Sequence plus branch to end
+                total_len += sequence.len() + 1;
+
+                if sequence.is_empty() {
+                    // Extra instruction: pop
+                    total_len += 1;
+                }
+
+                clauses.push((test, sequence, arrow));
+            }
+
+            // Normal clause:
+            // <test> | branch_unless | <sequence> | branch* (to end)
+            // Test-only clause:
+            // <test> | ro_branch_unless | branch (to end)* | pop
+            // Arrow clause
+            // <test> | ro_branch_unless | <expr> | arity_check | call | branch* (to end) | pop
+            // (*) not present in the last clause without an else
+
+            let mut instructions = vec![];
+            let mut walked_distance = 0;
+
+            for (test, sequence, arrow) in clauses.into_iter() {
+                let test_len = test.len();
+                let seq_len = sequence.len();
+                let test_only_clause = sequence.is_empty();
+
+                instructions.extend(test);
+
+                let diff_to_next = if arrow {
+                    seq_len + 4
+                } else if test_only_clause {
+                    2
+                } else {
+                    seq_len + 2
+                };
+
+                let branch_to_next = if arrow || test_only_clause {
+                    Instruction::ROBranchUnless(diff_to_next)
+                } else {
+                    Instruction::BranchUnless(diff_to_next)
+                };
+
+                instructions.push(branch_to_next);
+                instructions.extend(sequence);
+
+
+                let offset = test_len + 1 + seq_len + if arrow { 2 } else { 0 };
+
+                let diff_to_end = total_len - walked_distance - offset;
+
+                if arrow {
+                    instructions.extend(vec![
+                        Instruction::Arity(1, false),
+                        Instruction::Call(tail, 1),
+                        Instruction::Branch(diff_to_end),
+                        Instruction::Pop,
+                    ]);
+                } else {
+                    instructions.push(Instruction::Branch(diff_to_end));
+                    if test_only_clause { instructions.push(Instruction::Pop); }
+                }
+
+                let step = offset + 1 + if arrow || test_only_clause {
+                    1
+                } else {
+                    0
+                };
+
+                walked_distance += step;
+            }
+
+            match else_expressions {
+                Some(ins) => instructions.extend(ins),
+                None => instructions.push(Instruction::Nil)
+            }
+
+            Ok(instructions)
         // (keywords::CASE, l) if l >= 2 => {
         //     let key = Box::new(parse_expression(datums.pop_front().unwrap())?);
 
@@ -406,7 +501,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
         //     };
 
         //     Ok(Expression::Derived(derived))
-        // }
+        }
         (keywords::LET, l) if l >= 2 => match symbol_type(&datums[0]) {
             Symbol::Variable => compile_let_exp(datums, LetExp::NamedLet, tail),
             _ => compile_let_exp(datums, LetExp::Let, tail),
@@ -573,61 +668,37 @@ fn compile_quotation(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
     Ok(instructions)
 }
 
-// //
-// // Subexpressions
-// //
-// fn parse_else_clause(
-//     datums: &mut VecDeque<Datum>,
-// ) -> Result<Option<(Vec<Expression>, Box<Expression>)>, ParsingError> {
-//     let mut else_clause = match datums.back().cloned() {
-//         Some(Datum::List(l)) => if l.len() > 0 {
-//             l
-//         } else {
-//             return Ok(None);
-//         },
-//         _ => return Ok(None),
-//     };
+//
+// Subexpressions
+//
+fn compile_else_clause(
+    datums: &mut VecDeque<Datum>,
+    tail: bool
+) -> Result<Option<(Vec<Instruction>)>, ParsingError> {
+    let mut else_clause = match datums.back().cloned() {
+        Some(Datum::List(l)) => if l.len() > 0 {
+            l
+        } else {
+            return Ok(None);
+        },
+        _ => return Ok(None),
+    };
 
-//     match keyword_name(else_clause.pop_front().unwrap()) {
-//         Some(ref s) if &s[..] == keywords::ELSE => {}
-//         _ => return Ok(None),
-//     }
+    match keyword_name(else_clause.pop_front().unwrap()) {
+        Some(ref s) if &s[..] == keywords::ELSE => {}
+        _ => return Ok(None),
+    }
 
-//     datums.pop_back();
+    datums.pop_back();
 
-//     check![(else_clause.len() > 0), ParsingError::Illegal];
+    check![else_clause.len() > 0, ParsingError::Illegal];
 
-//     let mut exprs = else_clause.into_expressions()?;
-//     let main = exprs.pop().unwrap();
-//     Ok(Some((exprs, Box::new(main))))
-// }
+    let main = else_clause.pop_back().unwrap();
+    let mut instructions = else_clause.compiled()?;
+    instructions.extend(compile_expression_inner(main, tail)?);
 
-// fn parse_cond_clause_exp(datum: Datum) -> Result<CondClause, ParsingError> {
-//     let mut list = datum.list().ok_or(ParsingError::Illegal)?;
-
-//     check![(list.len() > 0), ParsingError::Illegal];
-
-//     let test = list.pop_front()
-//         .map(parse_expression)
-//         .unwrap()
-//         .map(Box::new)?;
-
-//     let clause = match (list.get(0).cloned().map(keyword_name), list.len()) {
-//         (Some(Some(ref s)), 2) if s == keywords::ARROW => {
-//             let recipient = list.pop_back().map(parse_expression).unwrap()?;
-//             CondClause::Arrow {
-//                 test: test,
-//                 recipient: Box::new(recipient),
-//             }
-//         }
-//         _ => {
-//             let expressions = list.into_expressions()?;
-//             CondClause::Normal { test, expressions }
-//         }
-//     };
-
-//     Ok(clause)
-// }
+    Ok(Some(instructions))
+}
 
 // fn parse_case_clause_exp(datum: Datum) -> Result<CaseClause, ParsingError> {
 //     let mut list = datum.list().ok_or(ParsingError::Illegal)?;
@@ -783,6 +854,24 @@ fn compile_body(mut datums: VecDeque<Datum>, tail: bool) -> Result<Vec<Instructi
 
     check![datums.len() > 0, ParsingError::Illegal];
 
+    let sequence = compile_sequence(datums, tail)?;
+
+    let mut instructions = vec![];
+
+    for def in definitions.into_iter() {
+        instructions.extend(def);
+    }
+
+    instructions.extend(sequence);
+
+    Ok(instructions)
+}
+
+fn compile_sequence(mut datums: VecDeque<Datum>, tail: bool) -> Result<Vec<Instruction>, ParsingError> {
+    if datums.len() == 0 {
+        return Ok(vec![]);
+    }
+
     let expression = compile_expression_inner(datums.pop_back().unwrap(), tail)?;
 
     let commands: Vec<Vec<_>> = datums
@@ -791,10 +880,6 @@ fn compile_body(mut datums: VecDeque<Datum>, tail: bool) -> Result<Vec<Instructi
         .collect::<Result<_, _>>()?;
 
     let mut instructions = vec![];
-
-    for def in definitions.into_iter() {
-        instructions.extend(def);
-    }
 
     for command in commands.into_iter() {
         instructions.extend(command);

@@ -16,10 +16,10 @@ impl<T> Stack<T> {
     //     let i = self.len() - index;
     //     self.0.insert(i, it)
     // }
-    // pub fn get(&mut self, index: usize) -> Option<&T> {
-    //     let i = self.index(index);
-    //     self.0.get(i)
-    // }
+    pub fn get(&mut self, index: usize) -> Option<&T> {
+        let i = self.index(index);
+        self.0.get(i)
+    }
     // pub fn remove(&mut self, index: usize) -> T {
     //     let i = self.index(index);
     //     self.0.remove(i)
