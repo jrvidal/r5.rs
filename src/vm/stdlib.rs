@@ -4,12 +4,13 @@ use super::{shared, ExecutionError, Value, VmState, Branch};
 type NatFn = fn(&mut VmState, CallInfo, &Option<Branch>) -> Result<(), ExecutionError>;
 type CallInfo = (usize, bool);
 
-pub(super) const STDLIB: [(&'static str, NatFn, CallInfo); 5] = [
+pub(super) const STDLIB: [(&'static str, NatFn, CallInfo); 6] = [
     ("list", list, (0, true)),
     ("cons", cons, (2, false)),
     ("apply", apply, (2, false)),
     ("car", car, (1, false)),
     ("cdr", cdr, (1, false)),
+    ("force", force, (1, false))
 ];
 
 // By the time a native procedure is called:
@@ -87,6 +88,24 @@ fn cdr(vm: &mut VmState, _call_info: (usize, bool), _: &Option<Branch>) -> Resul
     } else {
         return Err(ExecutionError::BadArgType);
     }
+
+    Ok(())
+}
+
+fn force(vm: &mut VmState, call_info: (usize, bool), branch: &Option<Branch>) -> Result<(), ExecutionError> {
+    if let &Value::Promise { .. } = vm.stack.get(0).unwrap() {
+        // Pass
+    } else {
+        return Ok(());
+    }
+
+    let (code, environment) = if let Value::Promise { code, environment } = vm.stack.pop().unwrap() {
+        (code, environment)
+    } else {
+        unreachable!();
+    };
+
+    vm.non_native_call(call_info.1, environment, code, branch);
 
     Ok(())
 }

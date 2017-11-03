@@ -106,27 +106,30 @@ impl VmState {
         }
 
         match fn_details {
-            Ok((code, environment)) => {
-                use std::mem;
-                let old_environment = mem::replace(&mut self.environment, environment.new());
-
-                if !tail_call {
-                    let return_record = ReturnRecord {
-                        environment: old_environment,
-                        address: self.pc + 1,
-                        code: branch.clone(),
-                    };
-                    self.call_stack.push(return_record);
-                }
-
-                self.next_branch = Some(Some(code));
-                self.next_pc = Some(0);
-            }
+            Ok((code, environment)) => self.non_native_call(tail_call, environment, code, branch),
             Err(fun) => {
                 fun(self, (args_passed, tail_call), branch)?;
             }
         }
         Ok(())
+    }
+
+    fn non_native_call(&mut self, tail_call: bool, environment: GcShared<Environment>, code: Branch, branch: &Option<Branch>) {
+        use std::mem;
+        let old_environment = mem::replace(&mut self.environment, environment.new());
+
+        if !tail_call {
+            let return_record = ReturnRecord {
+                environment: old_environment,
+                address: self.pc + 1,
+                code: branch.clone(),
+            };
+            self.call_stack.push(return_record);
+        }
+
+        self.next_branch = Some(Some(code));
+        self.next_pc = Some(0);
+
     }
 
     // TODO
@@ -302,6 +305,14 @@ pub fn exec(
                     arity,
                 };
                 vm.stack.push(procedure);
+            }
+
+            Instruction::Promise(ref code) => {
+                let promise = Value::Promise {
+                    code: code.clone(),
+                    environment: vm.environment.clone()
+                };
+                vm.stack.push(promise);
             }
 
             Instruction::Arity(n, rest) => {

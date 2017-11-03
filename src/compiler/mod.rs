@@ -38,6 +38,7 @@ pub enum Instruction {
         code: Rc<Vec<Instruction>>,
         arity: (usize, bool),
     },
+    Promise(Rc<Vec<Instruction>>),
     // Make pair from 2 pops and push
     Pair,
     // Make list from n pops and push. Bool indicates improper list (+2 pops)
@@ -618,10 +619,48 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
         //     };
         //     Ok(Expression::Derived(derived))
         // }
-        // (keywords::DELAY, 1) => parse_expression(datums.pop_front().unwrap())
-        //     .map(Box::new)
-        //     .map(Derived::Delay)
-        //     .map(Expression::Derived),
+        (keywords::DELAY, 1) => {
+            let instructions = compile_expression_inner(datums.pop_front().unwrap(), false)?;
+            let (settled, value) = find_unused_vars(&instructions);
+
+            let (settled, value) : (ImmutableString, ImmutableString) = (settled.into(), value.into());
+
+            // (let
+            //      ((settled #f) (value #f))
+            //      (lambda () (if settled
+            //                      value
+            //                      (begin (set! value <expr>) (set! settled #t) value))))
+
+            let mut compiled = vec![
+                Instruction::NewEnv,
+                Instruction::Boolean(false),
+                Instruction::DefineVar(settled.clone()),
+                Instruction::Boolean(false),
+                Instruction::DefineVar(value.clone())
+            ];
+
+            let jump_to_end = instructions.len() + 6;
+
+            let mut body = vec![
+                Instruction::LoadVar(settled.clone()),
+                Instruction::BranchUnless(3),
+                Instruction::LoadVar(value.clone()),
+                Instruction::Branch(jump_to_end),
+            ];
+            body.extend(instructions);
+            body.extend(vec![
+                Instruction::SetVar(value.clone()),
+                Instruction::Pop,
+                Instruction::Boolean(true),
+                Instruction::SetVar(settled.clone()),
+                Instruction::LoadVar(value),
+                Instruction::Ret
+            ]);
+
+            compiled.push(Instruction::Promise(Rc::new(body)));
+            compiled.push(Instruction::PopEnv);
+            Ok(compiled)
+        },
         _ => return Err(ParsingError::Illegal),
     }
 }
@@ -1076,5 +1115,32 @@ impl CompilerHelper for VecDeque<Datum> {
                 _ => Err(ParsingError::Illegal),
             })
             .collect()
+    }
+}
+
+fn find_unused_vars(instructions: &[Instruction]) -> (String, String) {
+    let mut vars = ("a".to_owned(), "b".to_owned());
+
+    loop {
+        let mut overlap = false;
+        for instruction in instructions.iter() {
+            match *instruction {
+                Instruction::LoadVar(ref v) | Instruction::DefineVar(ref v) | Instruction::SetVar(ref v) => {
+                    let vstring : &String = &*v;
+                    if vstring == &vars.0 || vstring == &vars.1 {
+                        overlap = true;
+                        break;
+                    }
+                },
+                _ => continue
+            }
+        }
+
+        if overlap {
+            vars.0.push('a');
+            vars.1.push('b');
+        } else {
+            break vars;
+        }
     }
 }

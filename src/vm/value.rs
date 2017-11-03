@@ -27,6 +27,10 @@ pub enum Value {
         cdr: GcShared<Value>,
     },
     NativeProcedure(NativeProcedure),
+    Promise {
+        code: Branch,
+        environment: GcShared<Environment>
+    }
 }
 
 impl PartialEq<Value> for Value {
@@ -95,6 +99,9 @@ unsafe impl Trace for Value {
                 mark(car);
                 mark(cdr);
             }
+            Promise {
+                ref environment, ..
+            } => mark(environment),
             Nil |
             EmptyList |
             Number |
@@ -163,6 +170,7 @@ impl Value {
                     + ")"
             }
             ref pair @ Value::Pair { .. } => format!("({})", pair_to_repl(&pair).1),
+            Value::Promise{ .. } => "<promise>".to_owned(),
             ref v => format!("{:?}", v),
         }
     }

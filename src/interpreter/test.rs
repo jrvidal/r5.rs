@@ -133,3 +133,18 @@ fn cond_arrow() {
 fn cond_arrow_false() {
     assert_eq![with_null!["(cond (#f => car) (#t 'z))"], Ok(Value::Symbol("z".into()))];
 }
+
+#[test]
+fn delay_basic() {
+    assert_eq![with_std!["(force (delay 'a))"], Ok(Value::Symbol("a".into()))];
+}
+
+#[test]
+fn delay_no_clobber() {
+    assert_eq![with_std!["(force (let ((a 'one)) (delay a)))"], Ok(Value::Symbol("one".into()))];
+}
+
+#[test]
+fn delay_is_delayed() {
+    assert![with_null!["(delay variable-yet-to-be-defined)"].is_ok()];
+}
