@@ -25,19 +25,20 @@ pub enum Instruction {
     // Return, restore return environment
     Ret,
     // Branch +n unconditionally
-    Branch(usize),
+    Branch(isize),
     // Branch +n if stack pop is truthy
-    BranchIf(usize),
+    BranchIf(isize),
     // Branch +n if stack pop is falsy
-    BranchUnless(usize),
+    BranchUnless(isize),
     // Non-popping versions
-    ROBranchIf(usize),
-    ROBranchUnless(usize),
+    ROBranchIf(isize),
+    ROBranchUnless(isize),
     // Push compiled lambda
     Lambda {
         code: Rc<Vec<Instruction>>,
         arity: (usize, bool),
     },
+    // Push compiled promise
     Promise(Rc<Vec<Instruction>>),
     // Make pair from 2 pops and push
     Pair,
@@ -331,9 +332,9 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                 .unwrap_or(0);
 
             let mut instructions = test;
-            instructions.push(Instruction::BranchUnless(test_offset + 2));
+            instructions.push(Instruction::BranchUnless(test_offset as isize + 2));
             instructions.extend(consequent);
-            instructions.push(Instruction::Branch(consequent_offset + 1));
+            instructions.push(Instruction::Branch(consequent_offset as isize + 1));
 
             instructions.extend(alternate.unwrap_or_else(|| vec![Instruction::Nil]));
 
@@ -436,9 +437,9 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                 };
 
                 let branch_to_next = if arrow || test_only_clause {
-                    Instruction::ROBranchUnless(diff_to_next)
+                    Instruction::ROBranchUnless(diff_to_next as isize)
                 } else {
-                    Instruction::BranchUnless(diff_to_next)
+                    Instruction::BranchUnless(diff_to_next as isize)
                 };
 
                 instructions.push(branch_to_next);
@@ -453,11 +454,11 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                     instructions.extend(vec![
                         Instruction::Arity(1, false),
                         Instruction::Call(tail, 1),
-                        Instruction::Branch(diff_to_end),
+                        Instruction::Branch(diff_to_end as isize),
                         Instruction::Pop,
                     ]);
                 } else {
-                    instructions.push(Instruction::Branch(diff_to_end));
+                    instructions.push(Instruction::Branch(diff_to_end as isize));
                     if test_only_clause { instructions.push(Instruction::Pop); }
                 }
 
@@ -530,13 +531,13 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                     instructions.extend(case);
                     instructions.push(Instruction::Eq);
                     diff_to_sequence -= 1;
-                    instructions.push(Instruction::BranchIf(diff_to_sequence - 1));
+                    instructions.push(Instruction::BranchIf(diff_to_sequence as isize - 1));
                     diff_to_sequence -= 1;
                 }
 
 
                 let seq_len = sequence.len();
-                instructions.push(Instruction::Branch(seq_len + 3));
+                instructions.push(Instruction::Branch(seq_len as isize + 3));
                 instructions.push(Instruction::Pop);
 
                 let offset = cases_len + seq_len + 3;
@@ -544,7 +545,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
 
 
                 instructions.extend(sequence);
-                instructions.push(Instruction::Branch(total_len - traveled + 1));
+                instructions.push(Instruction::Branch((total_len - traveled) as isize + 1));
             }
 
             instructions.push(Instruction::Pop);
@@ -562,41 +563,82 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
         },
         (keywords::LETREC, l) if l >= 2 => compile_let_exp(datums, LetExp::LetRec, tail),
         (keywords::LET_STAR, l) if l >= 2 => compile_let_exp(datums, LetExp::LetStar, tail),
-        // (keywords::DO, l) if l >= 2 => {
-        //     let iterations = datums
-        //         .pop_front()
-        //         .unwrap()
-        //         .list()
-        //         .ok_or(ParsingError::Illegal)?
-        //         .into_iter()
-        //         .map(parse_iteration_spec)
-        //         .collect::<Result<_, _>>()?;
+        (keywords::DO, l) if l >= 2 => {
+            let variables = datums.pop_front().unwrap().list().ok_or(ParsingError::Illegal)?;
 
-        //     let mut list = datums
-        //         .pop_front()
-        //         .unwrap()
-        //         .list()
-        //         .ok_or(ParsingError::Illegal)?;
+            let (mut vars, inits, steps) = {
+                let mut vars = vec![];
+                let mut inits = VecDeque::new();
+                let mut steps = vec![];
 
-        //     check![list.len() > 0, ParsingError::Illegal];
+                for variable in variables.into_iter() {
+                    let mut parts = variable.list().ok_or(ParsingError::Illegal)?;
+                    check![parts.len() == 2 || parts.len() == 3, ParsingError::Illegal];
+                    let var = parts.pop_front().unwrap();
 
-        //     let test = list.pop_front()
-        //         .map(parse_expression)
-        //         .unwrap()
-        //         .map(Box::new)?;
+                    if let (Symbol::Variable, Datum::Symbol(s)) = (symbol_type(&var), var) {
+                        vars.push(s);
+                    } else {
+                        return Err(ParsingError::Illegal);
+                    };
+                    inits.push_back(parts.pop_front().unwrap());
+                    let step = match parts.pop_front() {
+                        Some(d) => Some(compile_expression_inner(d, false)?),
+                        None => None,
+                    };
+                    steps.push(step);
+                }
 
-        //     let result = list.into_expressions()?;
-        //     let commands = datums.into_expressions()?;
-        //     let derived = Derived::Do {
-        //         test,
-        //         result,
-        //         commands,
-        //         iterations,
-        //     };
+                (vars, inits, steps)
+            };
 
-        //     Ok(Expression::Derived(derived))
 
-        // }
+            let mut test_result = datums.pop_front().unwrap().list().ok_or(ParsingError::Illegal)?;
+
+            check![test_result.len() >= 1, ParsingError::Illegal];
+            let test = compile_expression_inner(test_result.pop_front().unwrap(), false)?;
+            let sequence = compile_sequence(test_result, tail)?;
+
+            let commands = compile_sequence(datums, false)?;
+
+            // <init>, <test>, BranchIf (to sequence), <commands>, <steps>, <refresh vars>, Branch(to test), <sequence>
+
+            let mut instructions = vec![];
+
+            instructions.extend(inits.compiled()?);
+
+            for i in 0..vars.len() {
+                instructions.push(Instruction::DefineVar((&vars[vars.len() - i - 1])[..].into()));
+            }
+
+            let test_len = test.len();
+            instructions.extend(test);
+
+            let diff_to_sequence = commands.len() + 1 + vars.len() + steps.iter().fold(0, |acc, step| acc + step.as_ref().map(|s| s.len()).unwrap_or(0)) + 1;
+
+            instructions.push(Instruction::BranchIf((diff_to_sequence) as isize + 1));
+
+            instructions.extend(commands);
+            instructions.push(Instruction::Pop);
+            for step in steps.into_iter().filter(|s| s.is_some()).map(|s| s.unwrap()) {
+                instructions.extend(step);
+            }
+
+            while let Some(var) = vars.pop() {
+                instructions.push(Instruction::DefineVar(var.into()));
+            }
+
+            instructions.push(Instruction::Branch(-((diff_to_sequence + test_len) as isize)));
+
+            if sequence.len() > 0 {
+                instructions.extend(sequence)
+            } else {
+                instructions.push(Instruction::Nil);
+            }
+
+            Ok(instructions)
+        }
+
         (keywords::AND, _) => {
             // Push true
             // <test_1>, And, BranchUnless to <next>
@@ -623,7 +665,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                 instructions.extend(test);
                 instructions.push(Instruction::And);
                 instructions.push(Instruction::ROBranchUnless(
-                    length - traveled - test_len - 1,
+                    (length - traveled - test_len) as isize - 1,
                 ));
                 traveled += test_len;
             }
@@ -653,7 +695,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                 let test_len = test.len();
                 instructions.extend(test);
                 instructions.push(Instruction::Or);
-                instructions.push(Instruction::ROBranchIf(length - traveled - test_len - 1));
+                instructions.push(Instruction::ROBranchIf((length - traveled - test_len) as isize - 1));
                 traveled += test_len + 2;
             }
             // The last Branch is redundant
@@ -663,15 +705,15 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
             Ok(instructions)
         }
 
-        // (keywords::BEGIN, l) if l >= 2 => {
-        //     let mut commands = datums.into_expressions()?;
-        //     let expression = Box::new(commands.pop().unwrap());
-        //     let derived = Derived::Begin {
-        //         commands,
-        //         expression,
-        //     };
-        //     Ok(Expression::Derived(derived))
-        // }
+        // TODO: unclear if an empty begin is valid
+        (keywords::BEGIN, _) => {
+            if datums.len() == 0 {
+                return Ok(vec![Instruction::Nil]);
+            }
+
+            compile_sequence(datums, tail)
+        }
+
         (keywords::DELAY, 1) => {
             let instructions = compile_expression_inner(datums.pop_front().unwrap(), false)?;
             let (settled, value) = find_unused_vars(&instructions);
@@ -698,7 +740,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                 Instruction::LoadVar(settled.clone()),
                 Instruction::BranchUnless(3),
                 Instruction::LoadVar(value.clone()),
-                Instruction::Branch(jump_to_end),
+                Instruction::Branch(jump_to_end as isize),
             ];
             body.extend(instructions);
             body.extend(vec![
@@ -1094,6 +1136,7 @@ fn parse_quasiquotation(_datum: Datum) -> Result<Vec<Instruction>, ParsingError>
 //
 // Helpers
 //
+#[derive(PartialEq)]
 enum Symbol {
     Variable,
     Keyword,

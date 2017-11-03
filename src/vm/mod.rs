@@ -347,35 +347,35 @@ pub fn exec(
                 vm.stack.push(value);
             }
             Instruction::DefineVar(ref var_name) => {
-                let value = vm.stack.pop().expect("set var");
+                let value = vm.stack.pop().expect("define var");
                 vm.environment.borrow_mut().define(var_name.clone(), value);
             }
             Instruction::BranchUnless(n) => {
                 let cond: bool = (&vm.stack.pop().expect("test")).into();
                 if !cond {
-                    vm.next_pc = Some(vm.pc + n);
+                    vm.next_pc = Some(((vm.pc as isize) + n) as usize);
                 }
             }
             Instruction::BranchIf(n) => {
                 let cond: bool = (&vm.stack.pop().expect("test")).into();
                 if cond {
-                    vm.next_pc = Some(vm.pc + n);
+                    vm.next_pc = Some(((vm.pc as isize) + n) as usize);
                 }
             }
             Instruction::ROBranchUnless(n) => {
                 let cond: bool = (&vm.stack[0]).into();
                 if !cond {
-                    vm.next_pc = Some(vm.pc + n);
+                    vm.next_pc = Some(((vm.pc as isize) + n) as usize);
                 }
             }
             Instruction::ROBranchIf(n) => {
                 let cond: bool = (&vm.stack[0]).into();
                 if cond {
-                    vm.next_pc = Some(vm.pc + n);
+                    vm.next_pc = Some(((vm.pc as isize) + n) as usize);
                 }
             }
             Instruction::Branch(n) => {
-                vm.next_pc = Some(vm.pc + n);
+                vm.next_pc = Some(((vm.pc as isize) + n) as usize);
             }
             // Stack:
             // * ret_value
