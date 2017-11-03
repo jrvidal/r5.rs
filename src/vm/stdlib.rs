@@ -4,7 +4,7 @@ use super::{shared, ExecutionError, Value, VmState, Branch};
 type NatFn = fn(&mut VmState, CallInfo, &Option<Branch>) -> Result<(), ExecutionError>;
 type CallInfo = (usize, bool);
 
-pub(super) const STDLIB: [(&'static str, NatFn, CallInfo); 7] = [
+pub(super) const STDLIB: [(&'static str, NatFn, CallInfo); 8] = [
     ("list", list, (0, true)),
     ("cons", cons, (2, false)),
     ("apply", apply, (2, false)),
@@ -12,6 +12,7 @@ pub(super) const STDLIB: [(&'static str, NatFn, CallInfo); 7] = [
     ("cdr", cdr, (1, false)),
     ("force", force, (1, false)),
     ("eqv?", are_eqv, (2, false)),
+    ("null?", is_null, (1, false)),
 ];
 
 // By the time a native procedure is called:
@@ -116,6 +117,16 @@ fn are_eqv(vm: &mut VmState, _call_info: (usize, bool), _: &Option<Branch>) -> R
     let y = vm.stack.pop().unwrap();
 
     vm.stack.push(Value::Boolean(x == y));
+
+    Ok(())
+}
+
+fn is_null(vm: &mut VmState, _call_info: (usize, bool), _: &Option<Branch>) -> Result<(), ExecutionError> {
+    if let Value::EmptyList = vm.stack.pop().unwrap() {
+        vm.stack.push(Value::Boolean(true));
+    } else {
+        vm.stack.push(Value::Boolean(false));
+    }
 
     Ok(())
 }

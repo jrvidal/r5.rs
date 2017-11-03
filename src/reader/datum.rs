@@ -75,7 +75,6 @@ pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, Reader
             let mut datums = VecDeque::new();
 
             loop {
-
                 if stream.get(0).ok_or(ReaderError::UnexpectedEOF)? == &Token::Close {
                     stream.pop_front();
                     break;
@@ -100,7 +99,6 @@ fn parse_list_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, Reade
     let mut is_pair = false;
 
     loop {
-
         match stream.get(0).ok_or(ReaderError::UnexpectedEOF)? {
             &Token::Close if !is_pair && last.is_none() => {
                 stream.pop_front();
@@ -140,6 +138,13 @@ impl Datum {
     pub fn list(self) -> Option<VecDeque<Datum>> {
         match self {
             Datum::List(l) => Some(l),
+            _ => None,
+        }
+    }
+
+    pub fn symbol(self) -> Option<String> {
+        match self {
+            Datum::Symbol(s) => Some(s),
             _ => None,
         }
     }

@@ -62,6 +62,8 @@ pub enum Instruction {
 
 mod keywords;
 
+type LambdaFormals = (Vec<String>, Option<String>);
+
 // #[cfg(test)]
 // #[path = "expression_test.rs"]
 // mod test;
@@ -204,14 +206,6 @@ mod keywords;
 //     commands: Vec<Expression>,
 //     expression: Box<Expression>,
 // }
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum LambdaFormals {
-    VarArgs(String),
-    List(Vec<String>),
-    // For rest params, vec.len() *must* be >= 1
-    Rest(Vec<String>, String),
-}
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ParsingError {
@@ -840,11 +834,16 @@ fn compile_let_exp(
     let_type: LetExp,
     tail: bool,
 ) -> Result<Vec<Instruction>, ParsingError> {
-    if let LetExp::NamedLet = let_type {
-        panic!("named let");
-    }
+    let variable = match let_type {
+        LetExp::NamedLet if datums.len() >= 3 => datums.pop_front().unwrap().symbol(),
+        LetExp::NamedLet => return Err(ParsingError::Illegal),
+        _ => None
+    };
 
-    let bindings_list: Vec<(ImmutableString, Vec<Instruction>)> = datums
+    // (let fn ((x 'xinit) ...) <body>)
+    // (let ((x 'xinit) ...) (letrec ((fn (lambda (x ...) <body>)) (fn x ...))))
+
+    let bindings_list: VecDeque<(String, Vec<Instruction>)> = datums
         .pop_front()
         .unwrap()
         .list()
@@ -859,9 +858,7 @@ fn compile_let_exp(
 
             Ok((variable.into(), init))
         })
-        .collect::<Result<Vec<(_, _)>, _>>()?;
-
-    let body = compile_body(datums, tail)?;
+        .collect::<Result<_, _>>()?;
 
     let n_of_bindings = bindings_list.len();
     let mut instructions = vec![];
@@ -870,7 +867,7 @@ fn compile_let_exp(
             let mut definitions = vec![];
             for (v, init) in bindings_list.into_iter() {
                 instructions.extend(init);
-                definitions.push(Instruction::DefineVar(v));
+                definitions.push(Instruction::DefineVar(v.into()));
             }
 
             instructions.push(Instruction::NewEnv);
@@ -883,23 +880,43 @@ fn compile_let_exp(
         LetExp::LetStar => for (v, init) in bindings_list.into_iter() {
             instructions.push(Instruction::NewEnv);
             instructions.extend(init);
-            instructions.push(Instruction::DefineVar(v));
+            instructions.push(Instruction::DefineVar(v.into()));
         },
         LetExp::LetRec => {
             instructions.push(Instruction::NewEnv);
             for &(ref v, _) in bindings_list.iter() {
                 instructions.push(Instruction::Nil);
-                instructions.push(Instruction::DefineVar(v.clone()));
+                instructions.push(Instruction::DefineVar(v.clone().into()));
             }
             for (v, init) in bindings_list.into_iter() {
                 instructions.extend(init);
-                instructions.push(Instruction::DefineVar(v));
+                instructions.push(Instruction::DefineVar(v.into()));
             }
         }
-        LetExp::NamedLet => unreachable!(),
+        LetExp::NamedLet => {
+            let mut definitions = vec![];
+            let mut bindings = VecDeque::new();
+            for (v, init) in bindings_list.into_iter() {
+                instructions.extend(init);
+                definitions.push(Instruction::DefineVar(v.clone().into()));
+                bindings.push_back(v.clone())
+            }
+
+            instructions.push(Instruction::NewEnv);
+
+            let mut definitions = definitions.into_iter();
+            while let Some(def) = definitions.next_back() {
+                instructions.push(def);
+            }
+
+            let variable = variable.unwrap();
+            datums = named_let_body(variable, bindings, datums);
+        },
     }
 
+    let body = compile_body(datums, tail)?;
     instructions.extend(body);
+
     let pops = if let LetExp::LetStar = let_type {
         n_of_bindings
     } else {
@@ -909,6 +926,37 @@ fn compile_let_exp(
     use std::iter::repeat;
     instructions.extend(repeat(Instruction::PopEnv).take(pops));
     Ok(instructions)
+}
+
+// (let fn ((x 'xinit) ...) <body>) is equivalent to:
+// (let ((x 'xinit) ...) (letrec ((fn (lambda (x ...) <body>))) (fn x ...)))
+fn named_let_body(variable: String, bindings: VecDeque<String>, body: VecDeque<Datum>) -> VecDeque<Datum> {
+    let call = {
+        let mut vec = VecDeque::new();
+        vec.push_back(Datum::Symbol(variable.clone()));
+        vec.extend(bindings.clone().into_iter().map(|v| Datum::Symbol(v)));
+        Datum::List(vec)
+    };
+    let lambda = {
+        let mut vec = VecDeque::new();
+        vec.push_back(Datum::Symbol(keywords::LAMBDA.to_owned()));
+        vec.push_back(Datum::List(bindings.into_iter().map(Datum::Symbol).collect()));
+        vec.extend(body);
+        Datum::List(vec)
+    };
+
+    let let_bindings = {
+        let mut vec = VecDeque::new();
+        vec.push_back(Datum::Symbol(variable));
+        vec.push_back(lambda);
+        Datum::List(vec![Datum::List(vec)].into_iter().collect())
+    };
+
+    let mut vec = VecDeque::new();
+    vec.push_back(Datum::Symbol(keywords::LETREC.to_owned()));
+    vec.push_back(let_bindings);
+    vec.push_back(call);
+    vec![Datum::List(vec)].into_iter().collect()
 }
 
 // Order of expressions: arg_1, ..., arg_n, operator
@@ -933,17 +981,11 @@ fn compile_lambda_exp(
 ) -> Result<Vec<Instruction>, ParsingError> {
     let mut instructions = vec![];
 
-    let (arity, mut args) = match formals {
-        LambdaFormals::List(args) => {
-            let n = args.len();
-            ((n, false), args)
-        }
-        LambdaFormals::VarArgs(arg) => ((0, true), vec![arg]),
-        LambdaFormals::Rest(mut args, rest) => {
-            let n = args.len();
-            args.push(rest);
-            ((n, true), args)
-        }
+    let arity = (formals.0.len(), formals.1.is_some());
+    let mut args = {
+        let mut args = formals.0;
+        args.extend(formals.1.into_iter());
+        args
     };
 
     while let Some(arg) = args.pop() {
@@ -1025,33 +1067,30 @@ fn compile_definition(datum: Datum, tail: bool) -> Result<Vec<Instruction>, Pars
         }
 
         keywords::DEFINE if list.len() >= 2 => {
-            let formals = list.pop_front().map(parse_lambda_formals_exp).unwrap();
-            let instructions = match (formals, list.len()) {
-                (Ok(LambdaFormals::VarArgs(variable)), 1) => {
+            let formals = list.pop_front().map(parse_lambda_formals_exp).unwrap()?;
+            let instructions = match (formals.0.len(), formals, list.len()) {
+                (0, (_, Some(variable)), 1) => {
                     let mut instructions =
                         compile_expression_inner(list.pop_front().unwrap(), false)?;
                     instructions.push(Instruction::DefineVar(variable.into()));
                     instructions
                 }
-                (Ok(LambdaFormals::List(mut args)), _) => {
+                (_, (mut args, None), _) => {
                     check![args.len() > 0, ParsingError::Illegal];
 
                     let variable = args.remove(0);
-                    let formals = LambdaFormals::List(args);
-                    let mut instructions = compile_lambda_exp(formals, list)?;
+                    let mut instructions = compile_lambda_exp((args, None), list)?;
                     instructions.push(Instruction::DefineVar(variable.into()));
                     instructions
                 }
-                (Ok(LambdaFormals::Rest(mut args, rest)), _) => {
+                (_, (mut args, Some(rest)), _) => {
                     check![args.len() == 1, ParsingError::Illegal];
 
                     let variable = args.remove(0);
-                    let formals = LambdaFormals::VarArgs(rest);
-                    let mut instructions = compile_lambda_exp(formals, list)?;
+                    let mut instructions = compile_lambda_exp((vec![], Some(rest)), list)?;
                     instructions.push(Instruction::DefineVar(variable.into()));
                     instructions
                 }
-                _ => return Err(ParsingError::Illegal),
             };
             Ok(instructions)
         }
@@ -1061,14 +1100,13 @@ fn compile_definition(datum: Datum, tail: bool) -> Result<Vec<Instruction>, Pars
 
 fn parse_lambda_formals_exp(datum: Datum) -> Result<LambdaFormals, ParsingError> {
     match (symbol_type(&datum), datum) {
-        (_, Datum::List(l)) => l.into_variables().map(LambdaFormals::List),
+        (_, Datum::List(l)) => Ok((l.into_variables()?, None)),
         (_, Datum::Pair { car, cdr }) => {
             let vars = car.into_variables()?;
             let rest = parse_variable(*cdr)?;
-            let formals = LambdaFormals::Rest(vars, rest);
-            Ok(formals)
+            Ok((vars, Some(rest)))
         }
-        (Symbol::Variable, Datum::Symbol(s)) => Ok(LambdaFormals::VarArgs(s)),
+        (Symbol::Variable, Datum::Symbol(s)) => Ok((vec![], Some(s))),
         _ => Err(ParsingError::Illegal),
     }
 }

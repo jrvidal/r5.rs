@@ -7,7 +7,6 @@ An (incomplete, buggy, bloated?) implementation of [R5RS Scheme](http://www.sche
 * Arithmetic
 * Quasiquotations
 * Macros
-* Finalize derived expressions
 * Native modules?
 * Stdlib
 ** In particular, call/cc

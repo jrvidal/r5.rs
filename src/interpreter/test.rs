@@ -195,3 +195,35 @@ fn case_nil() {
         Ok(Value::Nil)
     ];
 }
+
+#[test]
+fn let_basic() {
+    assert_eq![
+        with_null!["(let ((x 'a)) x)"],
+        Ok(Value::Symbol("a".into()))
+    ];
+}
+
+#[test]
+fn let_order() {
+    assert_eq![with_null!["(let ((x 'a) (y x)) x)"], rt_err![UnboundVar]];
+}
+
+
+#[test]
+fn let_star_order() {
+    assert_eq![
+        with_null!["(let* ((x 'a) (y x)) y)"],
+        Ok(Value::Symbol("a".into()))
+    ];
+}
+
+#[test]
+fn named_let_basic() {
+    assert_eq![
+        with_std![
+            "(let fn ((x '(a b))) (if (null? (cdr x)) (car x) (fn (cdr x))))"
+        ],
+        Ok(Value::Symbol("b".into()))
+    ];
+}
