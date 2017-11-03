@@ -29,10 +29,12 @@ pub enum Value {
     NativeProcedure(NativeProcedure),
     Promise {
         code: Branch,
-        environment: GcShared<Environment>
-    }
+        environment: GcShared<Environment>,
+    },
 }
 
+// This PartialEq implementation corresponds to the native eqv? procedure
+// We've chosen a "hard" implementation where we compare pointers when possible without looking the contents of reference types
 impl PartialEq<Value> for Value {
     fn eq(&self, other: &Value) -> bool {
         use self::Value::*;
@@ -80,6 +82,20 @@ impl PartialEq<Value> for Value {
                     arity: arity2,
                 }),
             ) => arity == arity2 && (fun as *const NatFn) == (fun2 as *const NatFn),
+            (
+                &Promise {
+                    ref code,
+                    ref environment,
+                },
+                &Promise {
+                    code: ref code2,
+                    environment: ref environment2,
+                },
+            ) => {
+                (&*environment.borrow() as *const Environment)
+                    == (&*environment2.borrow() as *const Environment)
+                    && code.as_ptr() == code2.as_ptr()
+            }
             _ => false,
         }
     }
@@ -170,7 +186,7 @@ impl Value {
                     + ")"
             }
             ref pair @ Value::Pair { .. } => format!("({})", pair_to_repl(&pair).1),
-            Value::Promise{ .. } => "<promise>".to_owned(),
+            Value::Promise { .. } => "<promise>".to_owned(),
             ref v => format!("{:?}", v),
         }
     }

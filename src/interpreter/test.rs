@@ -116,7 +116,10 @@ fn cond_empty() {
 
 #[test]
 fn cond_cascade() {
-    assert_eq![with_null!["(cond (((lambda () #f)) 'a) (1 'b))"], Ok(Value::Symbol("b".into()))];
+    assert_eq![
+        with_null!["(cond (((lambda () #f)) 'a) (1 'b))"],
+        Ok(Value::Symbol("b".into()))
+    ];
 }
 
 #[test]
@@ -126,25 +129,69 @@ fn cond_test_only() {
 
 #[test]
 fn cond_arrow() {
-    assert_eq![with_std!["(cond ('(a b) => car))"], Ok(Value::Symbol("a".into()))];
+    assert_eq![
+        with_std!["(cond ('(a b) => car))"],
+        Ok(Value::Symbol("a".into()))
+    ];
 }
 
 #[test]
 fn cond_arrow_false() {
-    assert_eq![with_null!["(cond (#f => car) (#t 'z))"], Ok(Value::Symbol("z".into()))];
+    assert_eq![
+        with_null!["(cond (#f => car) (#t 'z))"],
+        Ok(Value::Symbol("z".into()))
+    ];
 }
 
 #[test]
 fn delay_basic() {
-    assert_eq![with_std!["(force (delay 'a))"], Ok(Value::Symbol("a".into()))];
+    assert_eq![
+        with_std!["(force (delay 'a))"],
+        Ok(Value::Symbol("a".into()))
+    ];
 }
 
 #[test]
 fn delay_no_clobber() {
-    assert_eq![with_std!["(force (let ((a 'one)) (delay a)))"], Ok(Value::Symbol("one".into()))];
+    assert_eq![
+        with_std!["(force (let ((a 'one)) (delay a)))"],
+        Ok(Value::Symbol("one".into()))
+    ];
 }
 
 #[test]
 fn delay_is_delayed() {
     assert![with_null!["(delay variable-yet-to-be-defined)"].is_ok()];
+}
+
+#[test]
+fn case_basic() {
+    assert_eq![
+        with_null!["(case 'a ((a) 'b))"],
+        Ok(Value::Symbol("b".into()))
+    ];
+}
+
+#[test]
+fn case_multiple() {
+    assert_eq![
+        with_null!["(case 'a ((b c) 'd) ((e a) 'x))"],
+        Ok(Value::Symbol("x".into()))
+    ];
+}
+
+#[test]
+fn case_with_else() {
+    assert_eq![
+        with_null!["(case 'a ((b c) 'd) ((e z) 'x) (else 'w 'n))"],
+        Ok(Value::Symbol("n".into()))
+    ];
+}
+
+#[test]
+fn case_nil() {
+    assert_eq![
+        with_null!["(case 'a ((b c) 'd) ((e z) 'x))"],
+        Ok(Value::Nil)
+    ];
 }

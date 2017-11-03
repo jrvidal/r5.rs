@@ -114,7 +114,13 @@ impl VmState {
         Ok(())
     }
 
-    fn non_native_call(&mut self, tail_call: bool, environment: GcShared<Environment>, code: Branch, branch: &Option<Branch>) {
+    fn non_native_call(
+        &mut self,
+        tail_call: bool,
+        environment: GcShared<Environment>,
+        code: Branch,
+        branch: &Option<Branch>,
+    ) {
         use std::mem;
         let old_environment = mem::replace(&mut self.environment, environment.new());
 
@@ -129,7 +135,6 @@ impl VmState {
 
         self.next_branch = Some(Some(code));
         self.next_pc = Some(0);
-
     }
 
     // TODO
@@ -310,17 +315,16 @@ pub fn exec(
             Instruction::Promise(ref code) => {
                 let promise = Value::Promise {
                     code: code.clone(),
-                    environment: vm.environment.clone()
+                    environment: vm.environment.clone(),
                 };
                 vm.stack.push(promise);
             }
 
-            Instruction::Arity(n, rest) => {
-                match vm.stack.get(0) {
-                    Some(&Value::Procedure { arity: (m, r) , ..}) if m == n && rest == r => {},
-                    Some(&Value::NativeProcedure(NativeProcedure { arity: (m, r) , ..})) if m == n && rest == r => {},
-                    _ => return Err(ExecutionError::BadArgType)
-                }
+            Instruction::Arity(n, rest) => match vm.stack.get(0) {
+                Some(&Value::Procedure { arity: (m, r), .. }) if m == n && rest == r => {}
+                Some(&Value::NativeProcedure(NativeProcedure { arity: (m, r), .. }))
+                    if m == n && rest == r => {}
+                _ => return Err(ExecutionError::BadArgType),
             },
 
             // Stack:                End stack:
@@ -425,6 +429,11 @@ pub fn exec(
                 let value2 = vm.stack.pop().unwrap();
                 let result = cond1 || (&value2).into();
                 vm.stack.push(Value::Boolean(result));
+            }
+            Instruction::Eq => {
+                let value1 = vm.stack.pop().unwrap();
+                let result = Value::Boolean(&value1 == vm.stack.get(0).unwrap());
+                vm.stack.push(result);
             }
         }
 

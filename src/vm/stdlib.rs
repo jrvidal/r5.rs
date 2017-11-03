@@ -4,13 +4,14 @@ use super::{shared, ExecutionError, Value, VmState, Branch};
 type NatFn = fn(&mut VmState, CallInfo, &Option<Branch>) -> Result<(), ExecutionError>;
 type CallInfo = (usize, bool);
 
-pub(super) const STDLIB: [(&'static str, NatFn, CallInfo); 6] = [
+pub(super) const STDLIB: [(&'static str, NatFn, CallInfo); 7] = [
     ("list", list, (0, true)),
     ("cons", cons, (2, false)),
     ("apply", apply, (2, false)),
     ("car", car, (1, false)),
     ("cdr", cdr, (1, false)),
-    ("force", force, (1, false))
+    ("force", force, (1, false)),
+    ("eqv?", are_eqv, (2, false)),
 ];
 
 // By the time a native procedure is called:
@@ -106,6 +107,15 @@ fn force(vm: &mut VmState, call_info: (usize, bool), branch: &Option<Branch>) ->
     };
 
     vm.non_native_call(call_info.1, environment, code, branch);
+
+    Ok(())
+}
+
+fn are_eqv(vm: &mut VmState, _call_info: (usize, bool), _: &Option<Branch>) -> Result<(), ExecutionError> {
+    let x = vm.stack.pop().unwrap();
+    let y = vm.stack.pop().unwrap();
+
+    vm.stack.push(Value::Boolean(x == y));
 
     Ok(())
 }

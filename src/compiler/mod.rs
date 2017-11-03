@@ -55,6 +55,8 @@ pub enum Instruction {
     PopEnv,
     And,
     Or,
+    // Compare popping _only_ the first operand
+    Eq,
 }
 
 mod keywords;
@@ -474,34 +476,85 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
             }
 
             Ok(instructions)
-        // (keywords::CASE, l) if l >= 2 => {
-        //     let key = Box::new(parse_expression(datums.pop_front().unwrap())?);
+        }
+        (keywords::CASE, l) if l >= 2 => {
+            let key = compile_expression_inner(datums.pop_front().unwrap(), false)?;
+            let else_expressions = compile_else_clause(&mut datums, tail)?;
+            let mut total_len = else_expressions.as_ref().map(|ins| ins.len()).unwrap_or(1) + 1;
 
-        //     let else_expressions = parse_else_clause(&mut datums)?;
-        //     let mut clauses = datums
-        //         .into_iter()
-        //         .map(parse_case_clause_exp)
-        //         .collect::<Result<_, _>>()?;
+            let mut clauses = vec![];
 
-        //     let derived = match else_expressions {
-        //         Some((commands, expr)) => Derived::CaseElse {
-        //             key: key,
-        //             clauses: clauses,
-        //             else_commands: commands,
-        //             else_expression: expr,
-        //         },
-        //         None => {
-        //             let head = clauses.remove(0);
-        //             Derived::Case {
-        //                 key: key,
-        //                 head_clause: head,
-        //                 tail_clauses: clauses,
-        //             }
-        //         }
+            for datum in datums.into_iter() {
+                let mut datums = if let Datum::List(l) = datum {
+                    l
+                } else {
+                    return Err(ParsingError::Illegal);
+                };
 
-        //     };
+                check![datums.len() >=2, ParsingError::Illegal];
 
-        //     Ok(Expression::Derived(derived))
+                let cases : Vec<Vec<Instruction>> = if let Datum::List(l) = datums.pop_front().unwrap() {
+                    l.into_iter().map(compile_quotation).collect::<Result<_, _>>()?
+                } else {
+                    return Err(ParsingError::Illegal);
+                };
+
+                // If no cases, we don't need to emit this branch
+                if cases.len() == 0 {
+                    continue;
+                }
+
+                // Cases plus Eq, BranchIf per case
+                let cases_len = cases.iter().fold(0, |acc, d| acc + d.len() + 2);
+                total_len += cases_len;
+
+                let sequence = compile_sequence(datums, tail)?;
+
+                total_len += sequence.len();
+                // Prefix and suffix: pop, branch, pop / and branch
+                total_len += 3;
+
+                clauses.push((cases, sequence, cases_len));
+            }
+
+            // <key>, <d1>, Eq, BranchIf, <d2>, Eq, BranchIf, ..., <dn>, Eq, BranchIf, Branch(to next), Pop, <sequence>, Branch (to end)
+
+            let mut instructions = key;
+            let mut traveled = 0;
+
+            for (cases, sequence, cases_len) in clauses.into_iter() {
+                let mut diff_to_sequence = cases_len + 2;
+
+                for case in cases.into_iter() {
+                    diff_to_sequence -= case.len();
+                    instructions.extend(case);
+                    instructions.push(Instruction::Eq);
+                    diff_to_sequence -= 1;
+                    instructions.push(Instruction::BranchIf(diff_to_sequence - 1));
+                    diff_to_sequence -= 1;
+                }
+
+
+                let seq_len = sequence.len();
+                instructions.push(Instruction::Branch(seq_len + 3));
+                instructions.push(Instruction::Pop);
+
+                let offset = cases_len + seq_len + 3;
+                traveled += offset;
+
+
+                instructions.extend(sequence);
+                instructions.push(Instruction::Branch(total_len - traveled + 1));
+            }
+
+            instructions.push(Instruction::Pop);
+
+            match else_expressions {
+                Some(ins) => instructions.extend(ins),
+                None => instructions.push(Instruction::Nil)
+            };
+
+            Ok(instructions)
         }
         (keywords::LET, l) if l >= 2 => match symbol_type(&datums[0]) {
             Symbol::Variable => compile_let_exp(datums, LetExp::NamedLet, tail),
@@ -738,28 +791,6 @@ fn compile_else_clause(
 
     Ok(Some(instructions))
 }
-
-// fn parse_case_clause_exp(datum: Datum) -> Result<CaseClause, ParsingError> {
-//     let mut list = datum.list().ok_or(ParsingError::Illegal)?;
-
-//     check![(list.len() >= 2), ParsingError::Illegal];
-
-//     let datums = list.pop_front()
-//         .unwrap()
-//         .list()
-//         .ok_or(ParsingError::Illegal)?;
-
-//     let mut commands = list.into_expressions()?;
-//     let expression = commands.pop().unwrap();
-
-//     let clause = CaseClause {
-//         datums,
-//         commands,
-//         expression: Box::new(expression),
-//     };
-
-//     Ok(clause)
-// }
 
 // panics unless datums.len() >= 1
 fn compile_let_exp(
