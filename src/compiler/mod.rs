@@ -81,8 +81,6 @@ type LambdaFormals = (Vec<String>, Option<String>);
 //     Quotation(Datum),
 //     QuasiQuotation(Datum),
 
-//     // Nope
-//     // http://stackoverflow.com/questions/18641757/unquoted-vectors-in-r5rs-scheme
 //     // Vector(Vec<Expression>),
 //     Call {
 //         operator: Box<Expression>,
@@ -275,16 +273,10 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                 datum,
             },
         ) => return parse_quasiquotation(*datum),
-        (_, Datum::Vector(datums)) => {
-            let mut instructions = vec![];
-            let n = datums.len();
 
-            for d in datums {
-                instructions.extend(compile_quotation(d)?);
-            }
-            instructions.push(Instruction::Vector(n));
-            return Ok(instructions);
-        }
+        // Nope
+        // http://stackoverflow.com/questions/18641757/unquoted-vectors-in-r5rs-scheme
+        // (_, Datum::Vector(datums)) => {}
 
         // Delegate
         (_, Datum::List(datums)) => datums,
@@ -786,6 +778,17 @@ fn compile_quotation(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
             instructions.push(Instruction::List(2, false));
             instructions
         }
+        Datum::Vector(datums) => {
+            let mut instructions = vec![];
+            let n = datums.len();
+
+            for d in datums {
+                instructions.extend(compile_quotation(d)?);
+            }
+            instructions.push(Instruction::Vector(n));
+            return Ok(instructions);
+        }
+
         Datum::Abbreviation {
             kind: AbbreviationKind::Quasiquote,
             ..

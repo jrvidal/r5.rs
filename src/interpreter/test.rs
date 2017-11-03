@@ -227,3 +227,8 @@ fn named_let_basic() {
         Ok(Value::Symbol("b".into()))
     ];
 }
+
+#[test]
+fn unquoted_vectors() {
+    assert![with_null!["#('a)"].is_err()];
+}
