@@ -11,4 +11,5 @@ pub mod lexer;
 pub mod reader;
 pub mod compiler;
 pub mod vm;
+#[cfg(test)]
 mod interpreter;

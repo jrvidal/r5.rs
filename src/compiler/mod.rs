@@ -64,147 +64,6 @@ mod keywords;
 
 type LambdaFormals = (Vec<String>, Option<String>);
 
-// #[cfg(test)]
-// #[path = "expression_test.rs"]
-// mod test;
-
-// #[derive(Debug, Clone, PartialEq)]
-// pub enum Expression {
-//     // max(String, bool, char, NumberToken, Datum, Vec)
-//     Variable(String),
-
-//     Boolean(bool),
-//     Character(char),
-//     String(String),
-//     // TO DO: are we going to store the real number or this?
-//     Number(NumberToken),
-//     Quotation(Datum),
-//     QuasiQuotation(Datum),
-
-//     // Vector(Vec<Expression>),
-//     Call {
-//         operator: Box<Expression>,
-//         operands: Vec<Expression>,
-//     },
-//     Lambda { formals: LambdaFormals, body: Body },
-//     Conditional {
-//         test: Box<Expression>,
-//         consequent: Box<Expression>,
-//         alternate: Option<Box<Expression>>,
-//     },
-//     Assignment {
-//         variable: String,
-//         expression: Box<Expression>,
-//     },
-//     Derived(Derived),
-//     MacroUse {
-//         keyword: String,
-//         datum: VecDeque<Datum>,
-//     },
-//     // TO DO: macro block
-//     MacroBlock,
-// }
-
-// #[derive(Debug, PartialEq, Clone)]
-// pub enum Derived {
-//     Cond {
-//         head_clause: CondClause,
-//         tail_clauses: Vec<CondClause>,
-//     },
-//     CondElse {
-//         clauses: Vec<CondClause>,
-//         else_commands: Vec<Expression>,
-//         else_expression: Box<Expression>,
-//     },
-//     Case {
-//         key: Box<Expression>,
-//         head_clause: CaseClause,
-//         tail_clauses: Vec<CaseClause>,
-//     },
-//     CaseElse {
-//         key: Box<Expression>,
-//         clauses: Vec<CaseClause>,
-//         else_commands: Vec<Expression>,
-//         else_expression: Box<Expression>,
-//     },
-//     And(Vec<Expression>),
-//     Or(Vec<Expression>),
-//     Let { bindings: Vec<Binding>, body: Body },
-//     NamedLet {
-//         variable: String,
-//         bindings: Vec<Binding>,
-//         body: Body,
-//     },
-//     LetStar { bindings: Vec<Binding>, body: Body },
-//     LetRec { bindings: Vec<Binding>, body: Body },
-//     Begin {
-//         commands: Vec<Expression>,
-//         expression: Box<Expression>,
-//     },
-//     Do {
-//         iterations: Vec<IterationSpec>,
-//         test: Box<Expression>,
-//         result: Vec<Expression>,
-//         commands: Vec<Expression>,
-//     },
-//     Delay(Box<Expression>),
-
-//     // Quasiquotation is at the top level
-// }
-
-// #[derive(Debug, PartialEq, Clone)]
-// pub struct IterationSpec {
-//     variable: String,
-//     init: Box<Expression>,
-//     step: Option<Box<Expression>>,
-// }
-
-// #[derive(Debug, PartialEq, Clone)]
-// pub struct Binding {
-//     pub variable: String,
-//     pub init: Box<Expression>,
-// }
-
-// #[derive(Debug, PartialEq, Clone)]
-// pub enum Definition {
-//     Define {
-//         variable: String,
-//         expression: Box<Expression>,
-//     },
-//     DefineLambda {
-//         variable: String,
-//         formals: LambdaFormals,
-//         body: Body,
-//     },
-//     Begin(Vec<Definition>),
-// }
-
-// #[derive(Debug, PartialEq, Clone)]
-// pub struct Body {
-//     pub definitions: Vec<Definition>,
-//     pub commands: Vec<Expression>,
-//     pub expression: Box<Expression>,
-// }
-
-// #[derive(Debug, PartialEq, Clone)]
-// pub enum CondClause {
-//     Normal {
-//         test: Box<Expression>,
-//         expressions: Vec<Expression>,
-//     },
-//     Arrow {
-//         test: Box<Expression>,
-//         recipient: Box<Expression>,
-//     },
-// }
-
-// #[derive(Debug, PartialEq, Clone)]
-// pub struct CaseClause {
-//     datums: VecDeque<Datum>,
-//     commands: Vec<Expression>,
-//     expression: Box<Expression>,
-// }
-
 #[derive(Debug, Eq, PartialEq)]
 pub enum ParsingError {
     Illegal,
@@ -225,16 +84,6 @@ enum LetExp {
     LetStar,
     NamedLet,
 }
-
-// macro_rules! let_expr {
-//     ($type:ident, $details:expr) => (
-//         {
-
-//             let (bindings, body) = $details?;
-//             Ok(Expression::Derived(Derived::$type { bindings, body }))
-//         }
-//     )
-// }
 
 pub fn compile_expression(d: Datum) -> Option<Vec<Instruction>> {
     compile_expression_inner(d, false).ok()
@@ -1142,31 +991,6 @@ fn parse_variable(datum: Datum) -> Result<String, ParsingError> {
         Err(ParsingError::Illegal)
     }
 }
-
-// fn parse_iteration_spec(datum: Datum) -> Result<IterationSpec, ParsingError> {
-//     let mut list = datum.list().ok_or(ParsingError::Illegal)?;
-//     check![list.len() == 2 || list.len() == 3, ParsingError::Illegal];
-
-//     let variable = list.pop_front().map(parse_variable).unwrap()?;
-
-//     let init = list.pop_front()
-//         .map(parse_expression)
-//         .unwrap()
-//         .map(Box::new)?;
-
-//     let step = match list.pop_front() {
-//         Some(d) => Some(Box::new(parse_expression(d)?)),
-//         None => None,
-//     };
-
-
-//     let spec = IterationSpec {
-//         variable,
-//         init,
-//         step,
-//     };
-//     Ok(spec)
-// }
 
 // TO DO: does this method really take 1 datum? The grammar suggests so.
 fn parse_quasiquotation(_datum: Datum) -> Result<Vec<Instruction>, ParsingError> {

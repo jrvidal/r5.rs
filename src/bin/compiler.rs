@@ -2,8 +2,6 @@ extern crate r5rs;
 
 use std::io::{stdin, stdout, Write};
 
-// use r5rs::values::*;
-// use r5rs::parser::*;
 use r5rs::reader::*;
 use r5rs::lexer::*;
 use r5rs::compiler::*;
@@ -11,8 +9,6 @@ use r5rs::compiler::*;
 fn main() {
     let mut buffer = String::new();
     let mut chars;
-    // let mut environment = Environment::new(None);
-    // let mut heap = Heap::new();
 
     loop {
         buffer.clear();
@@ -52,16 +48,6 @@ fn main() {
             }
         };
 
-        // // println!("datum: {:?}", datum);
-        // let expression = match parse_expression(datum) {
-        //     Ok(exp) => exp,
-        //     Err(_) => {
-        //         println!("Invalid expression");
-        //         continue;
-        //     }
-        // };
-
         println!("{:?}", compile_expression(datum));
-
     }
 }

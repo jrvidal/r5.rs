@@ -16,13 +16,6 @@ macro_rules! rt_err {
     ($err:expr) => (Err(InterpreterError::Exec($err)))
 }
 
-macro_rules! list_from_vec {
-    ($v:expr) => ({
-      if $v.len() == 0
-      let list = Value::P
-    })
-}
-
 #[test]
 fn symbol() {
     assert_eq![with_null!["'a"], Ok(Value::Symbol("a".into()))];
