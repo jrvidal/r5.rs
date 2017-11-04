@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use self::stack::Stack;
 use self::gc::shared;
-pub use self::value::{NativeProcedure, Value};
+pub use self::value::{NativeProcedure, Pair, Value};
 use compiler::Instruction;
 
 pub use self::gc::GcShared;
@@ -100,7 +100,7 @@ impl VmState {
         if rest && args_passed == n_of_args && !native_call {
             self.stack.push(Value::EmptyList);
         } else if rest && args_passed > n_of_args && !native_call {
-            let arg_list = self.pop_as_list(args_passed - n_of_args)
+            let arg_list = self.pop_as_list(args_passed - n_of_args, false)
                 .ok_or(Internal("No arg"))?;
             self.stack.push(arg_list);
         }
@@ -151,37 +151,42 @@ impl VmState {
         Some(values)
     }
 
-    fn pop_as_list(&mut self, count: usize) -> Option<Value> {
-        let mut pair = Value::EmptyList;
-
-
-        for _ in 0..count {
-            pair = Value::Pair {
-                cdr: shared(pair),
-                car: match self.stack.pop() {
-                    Some(val) => shared(val),
-                    None => return None,
-                },
+    fn pop_as_list(&mut self, count: usize, improper: bool) -> Option<Value> {
+        let mut pair = if improper {
+            let cdr = self.stack.pop();
+            if cdr.is_none() {
+                return None;
             }
+            cdr.unwrap()
+        } else {
+            Value::EmptyList
+        };
+
+        let remaining = count - if improper { 1 } else { 0 };
+
+        for _ in 0..remaining {
+            let car = match self.stack.pop() {
+                Some(val) => val,
+                None => return None,
+            };
+            pair = Value::Pair(shared(Pair(car, pair)));
         }
 
         Some(pair)
     }
 
     fn push_list(&mut self, list: Value) {
-        if let Value::Pair { car, cdr } = list {
-            let mut list = cdr;
-            self.stack.push(car.borrow().clone());
+        let mut pair = list;
+        loop {
+            let inner = match pair.pair() {
+                Some(pair) => pair,
+                None => return,
+            };
 
-            loop {
-                let clone = list.borrow().clone();
-                if let Value::Pair { car, cdr } = clone {
-                    list = cdr;
-                    self.stack.push(car.borrow().clone());
-                } else {
-                    break;
-                }
-            }
+            let borrowed = inner.borrow();
+            self.stack.push(borrowed.0.clone());
+
+            pair = borrowed.1.clone();
         }
     }
 }
@@ -243,9 +248,6 @@ pub fn exec(
             Instruction::Symbol(ref s) => {
                 vm.stack.push(Value::Symbol(s.clone()));
             }
-            Instruction::Integer(n) => {
-                vm.stack.push(Value::Integer(n));
-            }
             Instruction::Nil => {
                 vm.stack.push(Value::Nil);
             }
@@ -261,10 +263,7 @@ pub fn exec(
             Instruction::Pair => {
                 let car = vm.stack.pop().expect("No car");
                 let cdr = vm.stack.pop().expect("No cdr");
-                let pair = Value::Pair {
-                    car: shared(car),
-                    cdr: shared(cdr),
-                };
+                let pair = Value::Pair(shared(Pair(car, cdr)));
                 vm.stack.push(pair);
             }
             Instruction::Vector(n) => {
@@ -280,26 +279,8 @@ pub fn exec(
                 vm.stack.push(Value::EmptyList);
             }
             Instruction::List(n, improper) => {
-                let cdr = if improper {
-                    vm.stack.pop().unwrap()
-                } else {
-                    Value::EmptyList
-                };
-
-                let mut pair = Value::Pair {
-                    car: shared(vm.stack.pop().unwrap()),
-                    cdr: shared(cdr),
-                };
-
-                let rest = if improper { n } else { n - 1 };
-
-                for _ in 0..rest {
-                    let val = vm.stack.pop().unwrap();
-                    pair = Value::Pair {
-                        car: shared(val),
-                        cdr: shared(pair),
-                    };
-                }
+                let pair = vm.pop_as_list(n + if improper { 2 } else { 0 }, improper)
+                    .ok_or(Internal("Bad argc"))?;
                 vm.stack.push(pair);
             }
             Instruction::Lambda { ref code, arity } => {

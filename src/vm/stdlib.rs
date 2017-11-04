@@ -1,5 +1,5 @@
 
-use super::{shared, ExecutionError, Value, VmState, Branch};
+use super::{shared, ExecutionError, Value, VmState, Branch, Pair};
 
 type NatFn = fn(&mut VmState, CallInfo, &Option<Branch>) -> Result<(), ExecutionError>;
 type CallInfo = (usize, bool);
@@ -42,15 +42,15 @@ pub(super) const STDLIB: [(&'static str, NatFn, CallInfo); 8] = [
 // }
 
 fn list(vm: &mut VmState, call_info: (usize, bool), _: &Option<Branch>) -> Result<(), ExecutionError> {
-    let list = vm.pop_as_list(call_info.0).expect("Bad argc");
+    let list = vm.pop_as_list(call_info.0, false).expect("Bad argc");
     vm.stack.push(list);
     Ok(())
 }
 
 fn cons(vm: &mut VmState, _: (usize, bool), _: &Option<Branch>) -> Result<(), ExecutionError> {
-    let cdr = shared(vm.stack.pop().expect("bad cdr"));
-    let car = shared(vm.stack.pop().expect("bad car"));
-    vm.stack.push(Value::Pair { car, cdr });
+    let cdr = vm.stack.pop().expect("bad cdr");
+    let car = vm.stack.pop().expect("bad car");
+    vm.stack.push(Value::Pair(shared(Pair(car, cdr))));
     Ok(())
 }
 
@@ -75,22 +75,14 @@ fn apply(vm: &mut VmState, call_info: (usize, bool), branch: &Option<Branch>) ->
 }
 
 fn car(vm: &mut VmState, _call_info: (usize, bool), _: &Option<Branch>) -> Result<(), ExecutionError> {
-    if let Value::Pair { ref car, .. } = vm.stack.pop().unwrap() {
-        vm.stack.push(car.borrow().clone());
-    } else {
-        return Err(ExecutionError::BadArgType);
-    }
-
+    let pair = vm.stack.pop().unwrap().pair().ok_or(ExecutionError::BadArgType)?;
+    vm.stack.push(pair.borrow().0.clone());
     Ok(())
 }
 
 fn cdr(vm: &mut VmState, _call_info: (usize, bool), _: &Option<Branch>) -> Result<(), ExecutionError> {
-    if let Value::Pair { ref cdr, .. } = vm.stack.pop().unwrap() {
-        vm.stack.push(cdr.borrow().clone());
-    } else {
-        return Err(ExecutionError::BadArgType);
-    }
-
+    let pair = vm.stack.pop().unwrap().pair().ok_or(ExecutionError::BadArgType)?;
+    vm.stack.push(pair.borrow().1.clone());
     Ok(())
 }
 

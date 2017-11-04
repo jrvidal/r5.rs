@@ -13,7 +13,6 @@ pub enum Value {
     Symbol(ImmutableString),
     Boolean(bool),
     Character(char),
-    Integer(isize),
     Number,
     Vector(GcShared<Vec<Value>>),
     String(GcShared<String>),
@@ -22,16 +21,26 @@ pub enum Value {
         environment: GcShared<Environment>,
         arity: (usize, bool),
     },
-    Pair {
-        car: GcShared<Value>,
-        cdr: GcShared<Value>,
-    },
+    Pair(GcShared<Pair<Value>>),
     NativeProcedure(NativeProcedure),
     Promise {
         code: Branch,
         environment: GcShared<Environment>,
     },
 }
+
+#[derive(Debug, Clone)]
+pub struct Pair<T>(pub T, pub T);
+
+impl<T> Finalize for Pair<T> {}
+
+unsafe impl<T: Trace> Trace for Pair<T> {
+    custom_trace!(this, {
+        mark(&this.0);
+        mark(&this.1);
+    });
+}
+
 
 // This PartialEq implementation corresponds to the native eqv? procedure
 // We've chosen a "hard" implementation where we compare pointers when possible without looking the contents of reference types
@@ -45,18 +54,16 @@ impl PartialEq<Value> for Value {
             (&Boolean(x), &Boolean(y)) => x == y,
             (&Character(x), &Character(y)) => x == y,
             (&Symbol(ref x), &Symbol(ref y)) => *x == *y,
-            (&Integer(x), &Integer(y)) => x == y,
             (&String(ref x), &String(ref y)) => x.borrow().as_ptr() == y.borrow().as_ptr(),
             (&Vector(ref x), &Vector(ref y)) => x.borrow().as_ptr() == y.borrow().as_ptr(),
             (
-                &Pair { ref car, ref cdr },
-                &Pair {
-                    car: ref car2,
-                    cdr: ref cdr2,
-                },
+                &Value::Pair(ref pair),
+                &Value::Pair(ref pair2),
             ) => {
-                (&*car.borrow() as *const Value) == (&*car2.borrow() as *const Value)
-                    && (&*cdr.borrow() as *const Value) == (&*cdr2.borrow() as *const Value)
+                use self::Pair;
+                let borrow = pair.borrow();
+                let borrow2 = pair2.borrow();
+                &*borrow as *const Pair<Value> == &*borrow2 as *const Pair<Value>
             }
             (
                 &Procedure {
@@ -111,10 +118,7 @@ unsafe impl Trace for Value {
             Procedure {
                 ref environment, ..
             } => mark(environment),
-            Pair { ref car, ref cdr } => {
-                mark(car);
-                mark(cdr);
-            }
+            Pair(ref pair) => mark(pair),
             Promise {
                 ref environment, ..
             } => mark(environment),
@@ -124,7 +128,6 @@ unsafe impl Trace for Value {
             Symbol(_) |
             Boolean(_) |
             Character(_) |
-            Integer(_) |
             NativeProcedure(_) => {}
         }
     });
@@ -174,7 +177,6 @@ impl Value {
 
                 "#\\".to_owned() + &printed
             }
-            Value::Integer(n) => format!("{}", n),
             Value::Symbol(ref s) => format!("{}", *s),
             Value::String(ref s) => "\"".to_owned() + &escape(&*s.borrow()) + "\"",
             Value::Procedure { .. } => "<procedure>".to_owned(),
@@ -193,7 +195,7 @@ impl Value {
 
     pub fn is_list(&self) -> bool {
         match *self {
-            Value::Pair { ref cdr, .. } => cdr.borrow().is_list(),
+            Value::Pair(ref pair) => pair.borrow().1.is_list(),
             Value::EmptyList => true,
             _ => false,
         }
@@ -202,14 +204,14 @@ impl Value {
     pub fn list_len(&self) -> Option<usize> {
         match *self {
             Value::EmptyList => Some(0),
-            Value::Pair { ref cdr, .. } => cdr.borrow().list_len().map(|l| l + 1),
+            Value::Pair(ref pair) => pair.borrow().1.list_len().map(|l| l + 1),
             _ => None,
         }
     }
 
-    pub fn pair(&self) -> Option<(&GcShared<Value>, &GcShared<Value>)> {
+    pub fn pair(&self) -> Option<GcShared<Pair<Value>>> {
         match *self {
-            Value::Pair { ref car, ref cdr } => Some((car, cdr)),
+            Value::Pair(ref pair) => Some(pair.clone()),
             _ => None,
         }
     }
@@ -229,9 +231,9 @@ fn escape(s: &str) -> String {
 fn pair_to_repl(value: &Value) -> (bool, String) {
     match *value {
         Value::EmptyList => return (true, "".to_string()),
-        Value::Pair { ref car, ref cdr } => {
-            let (is_list, s) = pair_to_repl(&*cdr.borrow());
-            let result = (&*car.borrow()).to_repl() + if is_list {
+        Value::Pair(ref pair) => {
+            let (is_list, s) = pair_to_repl(&pair.borrow().1);
+            let result = (&pair.borrow().0).to_repl() + if is_list {
                 if s.len() > 0 {
                     " "
                 } else {

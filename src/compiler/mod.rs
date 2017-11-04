@@ -8,7 +8,6 @@ use helpers::*;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
     // *** Push simple scalars
-    Integer(isize),
     String(CowString),
     Character(char),
     Boolean(bool),

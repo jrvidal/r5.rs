@@ -42,8 +42,9 @@ fn stdlib_cons_argc() {
 fn stdlib_cons() {
     let ret = with_std!["(cons 'a 'b)"].expect("valid cons");
     let pair = ret.pair().expect("pair");
-    assert_eq![&*pair.0.borrow(), &Value::Symbol("a".into())];
-    assert_eq![&*pair.1.borrow(), &Value::Symbol("b".into())];
+    let borrow = pair.borrow();
+    assert_eq![&borrow.0, &Value::Symbol("a".into())];
+    assert_eq![&borrow.1, &Value::Symbol("b".into())];
 }
 
 #[test]
@@ -58,14 +59,15 @@ fn basic_call() {
 fn basic_call_varargs() {
     let ret = with_null!["((lambda x x) 'a 'b)"].expect("valid call");
     let list = ret.pair().expect("pair");
+    let borrow = list.borrow();
 
-    assert_eq![&*list.0.borrow(), &Value::Symbol("a".into())];
+    assert_eq![&borrow.0, &Value::Symbol("a".into())];
 
-    let cdr = &(*list.1).borrow();
-    let list2 = cdr.pair().expect("list");
+    let list2 = borrow.1.pair().expect("list");
+    let borrow2 = list2.borrow();
 
-    assert_eq![&*list2.0.borrow(), &Value::Symbol("b".into())];
-    assert_eq![&*list2.1.borrow(), &Value::EmptyList];
+    assert_eq![&borrow2.0, &Value::Symbol("b".into())];
+    assert_eq![&borrow2.1, &Value::EmptyList];
 }
 
 #[test]
@@ -85,16 +87,18 @@ fn stdlib_apply_argtype() {
 fn stdlib_apply_basic() {
     let ret = with_std!["(apply (lambda (x . y) y) '(a b))"].expect("valid call");
     let list = ret.pair().expect("valid pair");
-    assert_eq![&*list.0.borrow(), &Value::Symbol("b".into())];
-    assert_eq![&*list.1.borrow(), &Value::EmptyList];
+    let borrow = list.borrow();
+    assert_eq![&borrow.0, &Value::Symbol("b".into())];
+    assert_eq![&borrow.1, &Value::EmptyList];
 }
 
 #[test]
 fn stdlib_apply_basic_native() {
     let ret = with_std!["(apply list '(a))"].expect("valid call");
     let list = ret.pair().expect("valid pair");
-    assert_eq![&*list.0.borrow(), &Value::Symbol("a".into())];
-    assert_eq![&*list.1.borrow(), &Value::EmptyList];
+    let borrow = list.borrow();
+    assert_eq![&borrow.0, &Value::Symbol("a".into())];
+    assert_eq![&borrow.1, &Value::EmptyList];
 }
 
 #[test]
@@ -224,4 +228,39 @@ fn named_let_basic() {
 #[test]
 fn unquoted_vectors() {
     assert![with_null!["#('a)"].is_err()];
+}
+
+#[test]
+fn eqv_lists() {
+    assert_eq![with_std!["(eqv? '(a) '(a))"], Ok(Value::Boolean(false))];
+}
+
+#[test]
+fn eqv_empty_lists() {
+    assert_eq![with_std!["(eqv? '() '())"], Ok(Value::Boolean(true))];
+}
+
+#[test]
+fn eqv_lambdas() {
+    assert_eq![
+        with_std!["(eqv? (lambda () 'a) (lambda () 'a))"],
+        Ok(Value::Boolean(false))
+    ];
+}
+
+#[test]
+fn eqv_native_procs() {
+    assert_eq![with_std!["(eqv? eqv? eqv?)"], Ok(Value::Boolean(true))];
+}
+
+#[test]
+fn quotation_pair() {
+    let pair = with_std!["'(a . b)"]
+        .expect("valid quote")
+        .pair()
+        .expect("valid pair");
+
+    let borrow = pair.borrow();
+    assert_eq![&borrow.0, &Value::Symbol("a".into())];
+    assert_eq![&borrow.1, &Value::Symbol("b".into())];
 }
