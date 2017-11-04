@@ -1,5 +1,5 @@
 
-use lexer::token_stream;
+use lexer::Tokens;
 use reader::parse_datum;
 use compiler::compile_expression;
 use super::vm::{exec, Environment, ExecutionError, GcShared, Value};
@@ -17,10 +17,9 @@ pub fn interpret(
     code: &str,
     environment: GcShared<Environment>,
 ) -> Result<Value, InterpreterError> {
-    let tokens = token_stream(code.chars().collect()).map_err(|_| InterpreterError::Tokenizer)?;
-    // lolwat
-    let mut tokens = tokens.into_iter().collect();
-
+    let mut tokens = Tokens::new(code.chars())
+        .collect::<Result<_, _>>()
+        .map_err(|_| InterpreterError::Tokenizer)?;
 
     let mut value = None;
 

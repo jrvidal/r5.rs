@@ -1,3 +1,5 @@
+//! A virtual machine to interpret the ISA from `compiler`.
+
 use std::collections::HashMap;
 use std::rc::Rc;
 use self::stack::Stack;

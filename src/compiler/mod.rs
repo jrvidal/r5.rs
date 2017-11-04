@@ -1,3 +1,5 @@
+//! Convert expression(s) into bytecode
+
 use std::collections::VecDeque;
 use std::rc::Rc;
 
@@ -8,6 +10,7 @@ use helpers::*;
 mod keywords;
 mod numbers;
 
+/// The "ISA" of the interpreter
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
     // *** Push simple scalars

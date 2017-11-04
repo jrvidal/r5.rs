@@ -14,7 +14,7 @@ use r5rs::compiler::*;
 fn main() {
     env_logger::init().ok().expect("logger");
     let mut buffer = String::new();
-    let mut chars;
+    let mut chars: Vec<_>;
     let environment = default_env();
 
     loop {
@@ -33,15 +33,13 @@ fn main() {
 
         chars = buffer.clone().chars().collect();
 
-        let tokens = match token_stream(chars) {
+        let mut tokens = match Tokens::new(chars.into_iter()).collect() {
             Ok(tokens) => tokens,
             Err(e) => {
                 println!("Invalid input: {:?}", e);
                 continue;
             }
         };
-
-        let mut tokens = tokens.into_iter().collect();
 
         let datum = match parse_datum(&mut tokens) {
             Ok(Some(datum)) => datum,

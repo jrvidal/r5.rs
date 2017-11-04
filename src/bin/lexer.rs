@@ -5,7 +5,7 @@ use r5rs::lexer::*;
 
 fn main() {
     let mut buffer = String::new();
-    let mut chars;
+    let mut chars: Vec<_>;
     loop {
         buffer.clear();
 
@@ -22,10 +22,9 @@ fn main() {
 
         chars = buffer.clone().chars().collect();
 
-        match token_stream(chars) {
+        match Tokens::new(chars.into_iter()).collect::<Result<Vec<_>, _>>() {
             Ok(tokens) => println!("{:?}", tokens),
             Err(e) => println!("Invalid input: {:?}", e),
         }
-
     }
 }

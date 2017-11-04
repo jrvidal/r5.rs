@@ -1,5 +1,5 @@
-
+//! Convert tokens into "datums"
 
 mod datum;
 
-pub use self::datum::{Datum, AbbreviationKind, parse_datum};
+pub use self::datum::{parse_datum, AbbreviationKind, Datum};

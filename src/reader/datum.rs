@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use lexer::{NumberToken, Token};
 
+// A "datum" is basically a balanced token tree
 #[derive(Debug, Clone, PartialEq)]
 pub enum Datum {
     Boolean(bool),

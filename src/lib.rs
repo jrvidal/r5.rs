@@ -1,3 +1,4 @@
+//! A (hopefully) R5RS compliant Scheme interpreter
 extern crate env_logger;
 #[macro_use]
 extern crate gc;

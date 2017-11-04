@@ -1,8 +1,9 @@
 use std::ascii::AsciiExt;
 use std::collections::VecDeque;
+use std::vec;
 
 #[derive(Debug)]
-pub struct Chars2<I>
+pub struct Chars<I>
 where
     I: Iterator<Item = char>,
 {
@@ -11,7 +12,7 @@ where
     buf: VecDeque<I::Item>,
 }
 
-impl<I: Iterator<Item = char>> Chars2<I> {
+impl<I: Iterator<Item = char>> Chars<I> {
     fn fill_buf(&mut self) {
         loop {
             if self.buf.len() >= 10 {
@@ -27,7 +28,14 @@ impl<I: Iterator<Item = char>> Chars2<I> {
     }
 }
 
-impl<I: Iterator<Item = char>> Iterator for Chars2<I> {
+impl Chars<vec::IntoIter<char>> {
+    #[cfg(test)]
+    pub fn from_str(s: &str) -> Chars<vec::IntoIter<char>> {
+        s.chars().collect::<Vec<_>>().into_iter().into()
+    }
+}
+
+impl<I: Iterator<Item = char>> Iterator for Chars<I> {
     type Item = char;
 
     fn next(&mut self) -> Option<char> {
@@ -60,7 +68,7 @@ pub trait LexerIterator: Iterator<Item = char> {
     }
 }
 
-impl<I: Iterator<Item = char>> LexerIterator for Chars2<I> {
+impl<I: Iterator<Item = char>> LexerIterator for Chars<I> {
     fn case_sensitive(&mut self, sensitive: bool) {
         self.case_sensitive = sensitive;
     }
@@ -82,75 +90,12 @@ impl<I: Iterator<Item = char>> LexerIterator for Chars2<I> {
     }
 }
 
-impl<T: IntoIterator<Item = char>> From<T> for Chars2<T::IntoIter> {
-    fn from(into_iter: T) -> Chars2<T::IntoIter> {
-        Chars2 {
+impl<T: IntoIterator<Item = char>> From<T> for Chars<T::IntoIter> {
+    fn from(into_iter: T) -> Chars<T::IntoIter> {
+        Chars {
             it: into_iter.into_iter(),
             buf: VecDeque::new(),
-            case_sensitive: true,
+            case_sensitive: false,
         }
     }
 }
-
-// use std::vec::IntoIter;
-// impl From<&'static str> for Chars2<IntoIter<char>> {
-//     #[test]
-//     fn from(s: &'static str) -> Chars2<IntoIter<char>> {
-//         Chars2 {
-//             it: s.iter().collect::<Vec<_>>().into_iter(),
-//             buf: VecDeque::new(),
-//             case_sensitive: true,
-//         }
-//     }
-// }
-
-// #[derive(Debug)]
-// pub struct Chars {
-//     vec: Vec<char>,
-//     pub case_sensitive: bool,
-//     index: usize,
-// }
-
-// impl Iterator for Chars {
-//     type Item = char;
-
-//     fn next(&mut self) -> Option<char> {
-//         let r = self.peek(0);
-//         self.index += 1;
-//         r
-//     }
-// }
-
-// impl Chars {
-//     pub fn peek(&self, i: usize) -> Option<char> {
-//         let c = self.vec.get(self.index + i);
-
-//         if self.case_sensitive {
-//             c.cloned()
-//         } else {
-//             c.map(|&d| d.to_ascii_lowercase())
-//         }
-//     }
-
-//     pub fn peek_sensitive(&self, i: usize) -> Option<char> {
-//         self.vec.get(self.index + i).cloned()
-//     }
-
-//     pub fn advance(&mut self, n: usize) {
-//         self.index += n;
-//     }
-
-//     pub fn from_vec(v: Vec<char>) -> Chars {
-//         Chars {
-//             vec: v,
-//             case_sensitive: false,
-//             index: 0,
-//         }
-//     }
-
-//     // REVISIT
-//     #[cfg(test)]
-//     pub fn from_str(s: &str) -> Chars {
-//         Chars::from_vec(s.chars().collect())
-//     }
-// }

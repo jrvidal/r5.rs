@@ -1,4 +1,4 @@
-use super::chars::Chars;
+use super::chars::LexerIterator;
 use super::TokenErrorClass;
 
 #[cfg(test)]
@@ -278,7 +278,7 @@ impl ComplexLiteral {
 type Prefix = (Option<Exactness>, Option<Radix>);
 
 // stream is guaranteed to be non-empty
-pub fn parse_number(stream: &mut Chars) -> Result<NumberToken, TokenErrorClass> {
+pub fn parse_number<T: LexerIterator>(stream: &mut T) -> Result<NumberToken, TokenErrorClass> {
     parse_prefix(stream)
         .and_then(|(e, r)| parse_complex(stream, r).map(|n| (e, r, n)))
         .map(|(e, r, n)| {
@@ -290,7 +290,7 @@ pub fn parse_number(stream: &mut Chars) -> Result<NumberToken, TokenErrorClass> 
         })
 }
 
-fn parse_prefix(stream: &mut Chars) -> Result<Prefix, TokenErrorClass> {
+fn parse_prefix<T: LexerIterator>(stream: &mut T) -> Result<Prefix, TokenErrorClass> {
     let mut exactness = None;
     let mut radix = None;
 
@@ -312,8 +312,8 @@ fn parse_prefix(stream: &mut Chars) -> Result<Prefix, TokenErrorClass> {
     }
 }
 
-fn parse_complex(
-    stream: &mut Chars,
+fn parse_complex<T: LexerIterator>(
+    stream: &mut T,
     rad: Option<Radix>,
 ) -> Result<ComplexLiteral, TokenErrorClass> {
     let peek = stream.peek(0);
@@ -339,6 +339,7 @@ fn parse_complex(
     };
 
     let peek = stream.peek(0);
+    let peek2 = stream.peek(1);
     let mut cartesian = true;
     let mut second_sign = None;
 
@@ -361,7 +362,7 @@ fn parse_complex(
         }
 
         // ±ai
-        Some('i') if first_sign.is_some() && is_delimiter!(stream.peek(1)) => {
+        Some('i') if first_sign.is_some() && is_delimiter!(peek2) => {
             stream.next();
             return Ok(ComplexLiteral::Cartesian(
                 None,
@@ -397,8 +398,9 @@ fn parse_complex(
         }
     }
 
-    match stream.peek(0) {
-        _ if !is_delimiter!(stream.peek(0)) => return Err(TokenErrorClass::BadDelimiter),
+    let peek = stream.peek(0);
+    match peek {
+        _ if !is_delimiter!(peek) => return Err(TokenErrorClass::BadDelimiter),
         _ => if cartesian {
             Ok(ComplexLiteral::Cartesian(
                 Some((first_sign, first_real)),
@@ -417,7 +419,10 @@ fn parse_complex(
 }
 
 // It does not err if last char is not a delimiter
-fn parse_real(stream: &mut Chars, r: Option<Radix>) -> Result<RealLiteral, TokenErrorClass> {
+fn parse_real<T: LexerIterator>(
+    stream: &mut T,
+    r: Option<Radix>,
+) -> Result<RealLiteral, TokenErrorClass> {
     #[derive(Debug, PartialEq)]
     enum Number {
         Int,
@@ -523,7 +528,7 @@ fn parse_real(stream: &mut Chars, r: Option<Radix>) -> Result<RealLiteral, Token
 
 // It does not err if last char is not a delimiter
 // It is always called with a valid marker in the stream
-fn parse_suffix(stream: &mut Chars) -> Result<DecSuffix, String> {
+fn parse_suffix<T: LexerIterator>(stream: &mut T) -> Result<DecSuffix, String> {
     let marker = ExpMarker::from(stream.next().unwrap());
     let mut sign = None;
     let mut digits = String::new();
