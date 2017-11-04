@@ -5,6 +5,9 @@ use reader::{AbbreviationKind, Datum};
 use self::keywords::is_syntactic_keyword;
 use helpers::*;
 
+mod keywords;
+mod numbers;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
     // *** Push simple scalars
@@ -12,8 +15,8 @@ pub enum Instruction {
     Character(char),
     Boolean(bool),
     Symbol(ImmutableString),
-    Vector(usize),
-    Number,
+    Integer(i32),
+    Float(f32),
     Nil,
     EmptyList,
     // ***
@@ -43,6 +46,8 @@ pub enum Instruction {
     Pair,
     // Make list from n pops and push. Bool indicates improper list (+2 pops)
     List(usize, bool),
+    // Make vector from n pops and push
+    Vector(usize),
     // ...
     Pop,
     // Load variable from environment
@@ -58,8 +63,6 @@ pub enum Instruction {
     // Compare popping _only_ the first operand
     Eq,
 }
-
-mod keywords;
 
 type LambdaFormals = (Vec<String>, Option<String>);
 
@@ -105,7 +108,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
         (_, Datum::Boolean(b)) => return simple_datum![Boolean, b],
         (_, Datum::Character(c)) => return simple_datum![Character, c],
         (_, Datum::String(s)) => return simple_datum![String, s.into()],
-        (_, Datum::Number(_)) => return Ok(vec![Instruction::Number]),
+        (_, Datum::Number(_)) => return Ok(vec![Instruction::Integer(0)]),
         (
             _,
             Datum::Abbreviation {

@@ -11,6 +11,8 @@ pub enum Value {
     Nil,
     EmptyList,
     Symbol(ImmutableString),
+    Integer(i32),
+    Float(f32),
     Boolean(bool),
     Character(char),
     Number,
@@ -128,7 +130,9 @@ unsafe impl Trace for Value {
             Symbol(_) |
             Boolean(_) |
             Character(_) |
-            NativeProcedure(_) => {}
+            NativeProcedure(_) |
+            Integer(_) |
+            Float(_) => {}
         }
     });
 }
@@ -189,6 +193,8 @@ impl Value {
             }
             ref pair @ Value::Pair { .. } => format!("({})", pair_to_repl(&pair).1),
             Value::Promise { .. } => "<promise>".to_owned(),
+            Value::Integer(n) => format!("{}", n),
+            Value::Float(f) => format!("{}", f),
             ref v => format!("{:?}", v),
         }
     }

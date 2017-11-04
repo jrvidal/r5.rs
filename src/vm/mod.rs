@@ -254,11 +254,14 @@ pub fn exec(
             Instruction::String(ref s) => {
                 vm.stack.push(Value::String(shared(s.into())));
             }
-            Instruction::Number => {
-                vm.stack.push(Value::Number);
-            }
             Instruction::EmptyList => {
                 vm.stack.push(Value::EmptyList);
+            }
+            Instruction::Integer(n) => {
+                vm.stack.push(Value::Integer(n));
+            }
+            Instruction::Float(f) => {
+                vm.stack.push(Value::Float(f));
             }
             Instruction::Pair => {
                 let car = vm.stack.pop().expect("No car");
