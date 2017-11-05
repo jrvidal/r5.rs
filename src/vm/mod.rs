@@ -45,6 +45,7 @@ pub enum ExecutionError {
     BadArgc,
     BadArgType,
     UnboundVar,
+    InvalidNumber,
     Internal(&'static str),
 }
 
@@ -139,8 +140,6 @@ impl VmState {
         self.next_pc = Some(0);
     }
 
-    // TODO
-    #[allow(dead_code)]
     fn pop_as_vec(&mut self, count: usize) -> Option<Vec<Value>> {
         let mut values = vec![];
         for _ in 0..count {
@@ -264,6 +263,9 @@ pub fn exec(
             }
             Instruction::Float(f) => {
                 vm.stack.push(Value::Float(f));
+            }
+            Instruction::InvalidNumber => {
+                return Err(ExecutionError::InvalidNumber);
             }
             Instruction::Pair => {
                 let car = vm.stack.pop().expect("No car");

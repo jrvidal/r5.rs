@@ -4,7 +4,7 @@ use super::{shared, ExecutionError, Value, VmState, Branch, Pair};
 type NatFn = fn(&mut VmState, CallInfo, &Option<Branch>) -> Result<(), ExecutionError>;
 type CallInfo = (usize, bool);
 
-pub(super) const STDLIB: [(&'static str, NatFn, CallInfo); 8] = [
+pub(super) const STDLIB: [(&'static str, NatFn, CallInfo); 20] = [
     ("list", list, (0, true)),
     ("cons", cons, (2, false)),
     ("apply", apply, (2, false)),
@@ -12,34 +12,24 @@ pub(super) const STDLIB: [(&'static str, NatFn, CallInfo); 8] = [
     ("cdr", cdr, (1, false)),
     ("force", force, (1, false)),
     ("eqv?", are_eqv, (2, false)),
+    ("+", addition, (0, true)),
+    ("*", multiplication, (0, true)),
+    ("-", substraction, (0, true)),
     ("null?", is_null, (1, false)),
+    ("number?", is_number, (1, false)),
+    ("list?", is_list, (1, false)),
+    ("pair?", is_pair, (1, false)),
+    ("boolean?", is_boolean, (1, false)),
+    ("symbol?", is_symbol, (1, false)),
+    ("char?", is_char, (1, false)),
+    ("string?", is_string, (1, false)),
+    ("vector?", is_vector, (1, false)),
+    ("procedure?", is_procedure, (1, false)),
 ];
 
 // By the time a native procedure is called:
 // * The arity has been checked to be correct.
 // * The arguments are in inverse order in the stack: arg_n, ... arg_1
-
-// macro_rules! simple_native_function {
-//     ($fn:ident, $arguments:ident, $body:block) => (
-//         pub(super) fn $fn(vm: &mut VmState, call_info: (usize, bool), _: &Option<Branch>) -> Result<(), ExecutionError> {
-//             let (passed_args, _is_tail) = call_info;
-
-//             fn compute(mut $arguments: Vec<Value>) -> Result<Value, ExecutionError> {
-//                 $body
-//             }
-
-//             let mut arguments = vec![];
-//             for _ in 0..passed_args {
-//                 arguments.push(vm.stack.pop().ok_or(ExecutionError::Internal("bad argc"))?);
-//             }
-//             arguments.reverse();
-
-//             let ret = compute(arguments)?;
-//             vm.stack.push(ret);
-//             Ok(())
-//         }
-//     )
-// }
 
 fn list(vm: &mut VmState, call_info: (usize, bool), _: &Option<Branch>) -> Result<(), ExecutionError> {
     let list = vm.pop_as_list(call_info.0, false).expect("Bad argc");
@@ -113,12 +103,108 @@ fn are_eqv(vm: &mut VmState, _call_info: (usize, bool), _: &Option<Branch>) -> R
     Ok(())
 }
 
-fn is_null(vm: &mut VmState, _call_info: (usize, bool), _: &Option<Branch>) -> Result<(), ExecutionError> {
-    if let Value::EmptyList = vm.stack.pop().unwrap() {
-        vm.stack.push(Value::Boolean(true));
-    } else {
-        vm.stack.push(Value::Boolean(false));
+fn addition(vm: &mut VmState, (n_of_args, _): (usize, bool), _: &Option<Branch>) -> Result<(), ExecutionError> {
+    if n_of_args == 0 {
+        vm.stack.push(Value::Integer(0));
+        return Ok(())
     }
 
+    let mut acc = vm.stack.pop().unwrap();
+    if !acc.is_number() {
+        return Err(ExecutionError::BadArgType);
+    }
+
+    let numbers = vm.pop_as_vec(n_of_args - 1).unwrap();
+
+    for n in numbers.into_iter() {
+        acc = match (acc, n) {
+            (Value::Integer(n), Value::Integer(m)) => Value::Integer(m + n),
+            (Value::Integer(n), Value::Float(f)) => Value::Float((n as f32) + f),
+            (Value::Float(f), Value::Integer(n)) => Value::Float((n as f32) + f),
+            (Value::Float(f), Value::Float(g)) => Value::Float(f + g),
+            _ => return Err(ExecutionError::BadArgType)
+        }
+    }
+
+    vm.stack.push(acc);
     Ok(())
 }
+
+fn multiplication(vm: &mut VmState, (n_of_args, _): (usize, bool), _: &Option<Branch>) -> Result<(), ExecutionError> {
+    if n_of_args == 0 {
+        vm.stack.push(Value::Integer(1));
+        return Ok(())
+    }
+
+    let mut acc = vm.stack.pop().unwrap();
+    if !acc.is_number() {
+        return Err(ExecutionError::BadArgType);
+    }
+
+    let numbers = vm.pop_as_vec(n_of_args - 1).unwrap();
+
+    for n in numbers.into_iter() {
+        acc = match (acc, n) {
+            (Value::Integer(n), Value::Integer(m)) => Value::Integer(m * n),
+            (Value::Integer(n), Value::Float(f)) => Value::Float((n as f32) * f),
+            (Value::Float(f), Value::Integer(n)) => Value::Float((n as f32) * f),
+            (Value::Float(f), Value::Float(g)) => Value::Float(f * g),
+            _ => return Err(ExecutionError::BadArgType)
+        }
+    }
+
+    vm.stack.push(acc);
+    Ok(())
+}
+
+fn substraction(vm: &mut VmState, (n_of_args, _): (usize, bool), _: &Option<Branch>) -> Result<(), ExecutionError> {
+    if n_of_args == 0 {
+        vm.stack.push(Value::Integer(0));
+        return Ok(())
+    }
+
+    let (mut acc, numbers) = if n_of_args == 1 {
+        (Value::Integer(0), vm.pop_as_vec(1).unwrap())
+    } else {
+        let numbers = vm.pop_as_vec(n_of_args - 1).unwrap();
+        (vm.stack.pop().unwrap(), numbers)
+    };
+
+    if !acc.is_number() {
+        return Err(ExecutionError::BadArgType);
+    }
+
+    for n in numbers.into_iter() {
+        acc = match (acc, n) {
+            (Value::Integer(n), Value::Integer(m)) => Value::Integer(n - m),
+            (Value::Integer(n), Value::Float(f)) => Value::Float((n as f32) - f),
+            (Value::Float(f), Value::Integer(n)) => Value::Float(f - (n as f32)),
+            (Value::Float(f), Value::Float(g)) => Value::Float(f - g),
+            _ => return Err(ExecutionError::BadArgType)
+        }
+    }
+
+    vm.stack.push(acc);
+    Ok(())
+}
+
+macro_rules! simple_type {
+    ($name:ident) => (
+        fn $name(vm: &mut VmState, _: (usize, bool), _: &Option<Branch>) -> Result<(), ExecutionError> {
+            let value = vm.stack.pop().unwrap();
+            vm.stack.push(Value::Boolean(Value::$name(&value)));
+            Ok(())
+        }
+    )
+}
+
+simple_type![is_vector];
+simple_type![is_symbol];
+simple_type![is_procedure];
+simple_type![is_string];
+simple_type![is_char];
+simple_type![is_boolean];
+simple_type![is_null];
+simple_type![is_pair];
+simple_type![is_number];
+simple_type![is_list];

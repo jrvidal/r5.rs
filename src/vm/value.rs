@@ -13,9 +13,9 @@ pub enum Value {
     Symbol(ImmutableString),
     Integer(i32),
     Float(f32),
+    InvalidNumber,
     Boolean(bool),
     Character(char),
-    Number,
     Vector(GcShared<Vec<Value>>),
     String(GcShared<String>),
     Procedure {
@@ -52,7 +52,8 @@ impl PartialEq<Value> for Value {
         use self::NativeProcedure;
         match (self, other) {
             (&Nil, &Nil) | (&EmptyList, &EmptyList) => true,
-            (&Number, &Number) => true,
+            (&Float(f), &Float(g)) => f == g,
+            (&Integer(n), &Integer(m)) => m == n,
             (&Boolean(x), &Boolean(y)) => x == y,
             (&Character(x), &Character(y)) => x == y,
             (&Symbol(ref x), &Symbol(ref y)) => *x == *y,
@@ -126,13 +127,13 @@ unsafe impl Trace for Value {
             } => mark(environment),
             Nil |
             EmptyList |
-            Number |
             Symbol(_) |
             Boolean(_) |
             Character(_) |
             NativeProcedure(_) |
             Integer(_) |
-            Float(_) => {}
+            Float(_) |
+            InvalidNumber => {}
         }
     });
 }
@@ -163,6 +164,25 @@ impl<'a> From<&'a Value> for bool {
             _ => true,
         }
     }
+}
+
+macro_rules! simple_type {
+    ($name:ident, $var:pat) => (
+        pub fn $name(&self) -> bool {
+            match *self {
+                $var => true,
+                _ => false
+            }
+        }
+    );
+    ($name:ident, $var:pat, $var2:pat) => (
+        pub fn $name(&self) -> bool {
+            match *self {
+                $var | $var2 => true,
+                _ => false
+            }
+        }
+    )
 }
 
 impl Value {
@@ -206,6 +226,16 @@ impl Value {
             _ => false,
         }
     }
+
+    simple_type![is_vector, Value::Vector(..)];
+    simple_type![is_symbol, Value::Symbol(..)];
+    simple_type![is_procedure, Value::Procedure{..}, Value::NativeProcedure(..)];
+    simple_type![is_string, Value::String(..)];
+    simple_type![is_char, Value::Character(..)];
+    simple_type![is_boolean, Value::Boolean(..)];
+    simple_type![is_null, Value::EmptyList];
+    simple_type![is_pair, Value::Pair(..)];
+    simple_type![is_number, Value::Integer(_), Value::Float(_)];
 
     pub fn list_len(&self) -> Option<usize> {
         match *self {

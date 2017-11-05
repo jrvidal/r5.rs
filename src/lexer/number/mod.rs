@@ -1,3 +1,6 @@
+use std::i32;
+use std::str::FromStr;
+use std::ops::Neg;
 use super::chars::LexerIterator;
 use super::TokenErrorClass;
 
@@ -12,8 +15,67 @@ pub struct NumberToken {
     number: ComplexLiteral,
 }
 
+impl NumberToken {
+    /// stream is guaranteed to be non-empty
+    pub fn parse<T: LexerIterator>(stream: &mut T) -> Result<NumberToken, TokenErrorClass> {
+        parse_prefix(stream)
+            .and_then(|(e, r)| parse_complex(stream, r).map(|n| (e, r, n)))
+            .map(|(e, r, n)| {
+                NumberToken {
+                    exactness: e,
+                    radix: r,
+                    number: n,
+                }
+            })
+    }
+}
+
+impl From<NumberToken> for Result<Num, InvalidNumber> {
+    fn from(nt: NumberToken) -> Result<Num, InvalidNumber> {
+        let NumberToken {
+            exactness,
+            radix,
+            number,
+        } = nt;
+        let exactness = exactness.unwrap_or(Exactness::Exact);
+        let radix = radix.unwrap_or(Radix::Decimal);
+
+        match number {
+            ComplexLiteral::Real(sign, real) => {
+                let num = real.to_num(radix, exactness)?;
+
+                if sign == Some(NumSign::Minus) {
+                    Ok(-num)
+                } else {
+                    Ok(num)
+                }
+            }
+            _ => Err(InvalidNumber),
+        }
+    }
+}
+
+pub enum Num {
+    Integer(i32),
+    Float(f32),
+}
+
+impl Neg for Num {
+    type Output = Num;
+    fn neg(self: Num) -> Num {
+        match self {
+            Num::Float(f) => Num::Float(-f),
+            Num::Integer(n) => Num::Integer(-n),
+        }
+    }
+}
+
+pub struct InvalidNumber;
+
+
+
 #[derive(Debug, PartialEq, Clone)]
-pub enum ComplexLiteral {
+enum ComplexLiteral {
     Cartesian(
         Option<(Option<NumSign>, RealLiteral)>,
         NumSign,
@@ -25,7 +87,7 @@ pub enum ComplexLiteral {
 
 #[derive(Debug, PartialEq, Clone)]
 // Actually an unsigned real
-pub enum RealLiteral {
+enum RealLiteral {
     Integer { digits: String, pounds: u8 },
     Fraction {
         numerator: (String, u8),
@@ -39,21 +101,106 @@ pub enum RealLiteral {
     },
 }
 
+impl RealLiteral {
+    fn int_to_num(
+        mut digits: String,
+        pounds: u8,
+        radix: Radix,
+        exactness: Exactness,
+    ) -> Result<Num, InvalidNumber> {
+        use std::iter::repeat;
+        digits.extend(repeat('0').take(pounds as usize));
+        let ret = if pounds > 0 || exactness == Exactness::Inexact {
+            Num::Float(f32::from_str(&digits)?)
+        } else {
+            Num::Integer(i32::from_str_radix(&digits, radix as u32)?)
+        };
+        Ok(ret)
+    }
+
+    fn to_num(self, radix: Radix, exactness: Exactness) -> Result<Num, InvalidNumber> {
+        match self {
+            RealLiteral::Integer { digits, pounds } => {
+                RealLiteral::int_to_num(digits, pounds, radix, exactness)
+            }
+            RealLiteral::Fraction {
+                numerator: (num_digits, num_pounds),
+                denominator: (den_digits, den_pounds),
+            } => {
+                let denominator =
+                    RealLiteral::int_to_num(den_digits, den_pounds, radix, exactness)?;
+                let numerator = RealLiteral::int_to_num(num_digits, num_pounds, radix, exactness)?;
+
+                let ret = match (numerator, denominator) {
+                    (Num::Integer(n), Num::Integer(d)) if n.checked_rem(d) == Some(0) => {
+                        Num::Integer(n / d)
+                    }
+                    (Num::Integer(n), Num::Integer(d)) => Num::Float((n as f32) / (d as f32)),
+                    (Num::Integer(n), Num::Float(d)) => Num::Float((n as f32) / d),
+                    (Num::Float(n), Num::Integer(d)) => Num::Float(n / (d as f32)),
+                    (Num::Float(n), Num::Float(d)) => Num::Float(n / d),
+                };
+                Ok(ret)
+            }
+            RealLiteral::Decimal {
+                mut digits,
+                pounds,
+                point,
+                suffix,
+            } => {
+                use std::iter::repeat;
+                digits.extend(repeat('0').take(pounds as usize));
+                digits.insert(point, '.');
+
+                let has_suffix = suffix
+                    .as_ref()
+                    .map(|suf| suf.digits.len() > 0)
+                    .unwrap_or(false);
+
+                if has_suffix {
+                    let suffix = suffix.unwrap();
+                    digits.push('e');
+                    if suffix.sign.is_some() {
+                        let sign: char = suffix.sign.unwrap().into();
+                        digits.push(sign);
+                    }
+                    digits.extend(suffix.digits.chars());
+                }
+
+                Ok(Num::Float(f32::from_str(&digits)?))
+            }
+        }
+    }
+}
+
+use std::num::{ParseFloatError, ParseIntError};
+impl From<ParseIntError> for InvalidNumber {
+    fn from(_e: ParseIntError) -> InvalidNumber {
+        InvalidNumber
+    }
+}
+
+impl From<ParseFloatError> for InvalidNumber {
+    fn from(_e: ParseFloatError) -> InvalidNumber {
+        InvalidNumber
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum NumSign {
+enum NumSign {
     Plus,
     Minus,
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct DecSuffix {
+struct DecSuffix {
     marker: ExpMarker,
     sign: Option<NumSign>,
     digits: String,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum ExpMarker {
+enum ExpMarker {
     Short,
     Single,
     Double,
@@ -62,15 +209,15 @@ pub enum ExpMarker {
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum Radix {
+enum Radix {
     Binary = 2,
     Octal = 8,
     Decimal = 10,
     Hexadecimal = 16,
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub enum Exactness {
+#[derive(Debug, PartialEq, Clone, Copy)]
+enum Exactness {
     Exact,
     Inexact,
 }
@@ -81,6 +228,15 @@ impl From<char> for NumSign {
             '+' => NumSign::Plus,
             '-' => NumSign::Minus,
             _ => panic!("Invalid sign!"),
+        }
+    }
+}
+
+impl From<NumSign> for char {
+    fn from(s: NumSign) -> char {
+        match s {
+            NumSign::Plus => '+',
+            NumSign::Minus => '-',
         }
     }
 }
@@ -276,19 +432,6 @@ impl ComplexLiteral {
 }
 
 type Prefix = (Option<Exactness>, Option<Radix>);
-
-// stream is guaranteed to be non-empty
-pub fn parse_number<T: LexerIterator>(stream: &mut T) -> Result<NumberToken, TokenErrorClass> {
-    parse_prefix(stream)
-        .and_then(|(e, r)| parse_complex(stream, r).map(|n| (e, r, n)))
-        .map(|(e, r, n)| {
-            NumberToken {
-                exactness: e,
-                radix: r,
-                number: n,
-            }
-        })
-}
 
 fn parse_prefix<T: LexerIterator>(stream: &mut T) -> Result<Prefix, TokenErrorClass> {
     let mut exactness = None;

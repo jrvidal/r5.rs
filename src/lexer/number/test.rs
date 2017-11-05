@@ -196,42 +196,48 @@ macro_rules! assert_dec {
 
 #[test]
 fn parse_real_with_decimal() {
-    // let n = "1.2";
-    // let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
-    // assert_dec!(t, 0, "12", 1);
+    let n = "1.2";
+    let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
+    assert_dec!(t, 0, "12", 1);
 
 
-    // let n = "0.12";
-    // let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
-    // assert_dec!(t, 0, "012", 1);
+    let n = "0.12";
+    let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
+    assert_dec!(t, 0, "012", 1);
 
-    // let n = ".12";
-    // let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
-    // assert_dec!(t, 0, "12", 0);
+    let n = ".12";
+    let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
+    assert_dec!(t, 0, "12", 0);
 
-    // let n = "12.";
-    // let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
-    // assert_dec!(t, 0, "12", 2);
+    let n = "12.";
+    let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
+    assert_dec!(t, 0, "12", 2);
 
-    // let n = "1.2#";
-    // let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
-    // assert_dec!(t, 1, "12", 1);
+    let n = "1.2#";
+    let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
+    assert_dec!(t, 1, "12", 1);
 
-    // let n = "12#.#";
-    // let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
-    // assert_dec!(t, 2, "12", 3);
+    let n = "12#.#";
+    let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
+    assert_dec!(t, 2, "12", 3);
 
-    // let n = "12#.";
-    // let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
-    // assert_dec!(t, 1, "12", 3);
+    let n = "12#.";
+    let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
+    assert_dec!(t, 1, "12", 3);
 
-    // let n = "12.E12";
-    // let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
-    // assert_dec!(t, 0, "12", 2, DecSuffix {
-    //     sign: None,
-    //     digits: "12".to_string(),
-    //     marker: ExpMarker::Default
-    // });
+    let n = "12.E12";
+    let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
+    assert_dec!(
+        t,
+        0,
+        "12",
+        2,
+        DecSuffix {
+            sign: None,
+            digits: "12".to_string(),
+            marker: ExpMarker::Default,
+        }
+    );
 
     let n = "12.3#f-44";
     let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();

@@ -17,7 +17,7 @@ use super::chars::{Chars, LexerIterator};
     delimiter.
 */
 
-use super::number::{parse_number, NumberToken};
+use super::number::NumberToken;
 
 /// A Scheme token
 #[derive(Clone, PartialEq, Debug)]
@@ -132,7 +132,7 @@ pub fn next_token<T: LexerIterator>(stream: &mut T) -> Result<Option<Token>, Tok
                 (Some('0'...'9'), _) |
                 (Some('+'), Some('0'...'9')) |
                 (Some('-'), Some('0'...'9')) |
-                (Some('.'), Some('0'...'9')) => match parse_number(stream) {
+                (Some('.'), Some('0'...'9')) => match NumberToken::parse(stream) {
                     Ok(nt) => ret_val!(Token::Number(nt)),
                     Err(error) => {
                         return Err(TokenizerError { error });

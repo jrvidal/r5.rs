@@ -231,17 +231,17 @@ fn unquoted_vectors() {
 }
 
 #[test]
-fn eqv_lists() {
+fn stdlib_eqv_lists() {
     assert_eq![with_std!["(eqv? '(a) '(a))"], Ok(Value::Boolean(false))];
 }
 
 #[test]
-fn eqv_empty_lists() {
+fn stdlib_eqv_empty_lists() {
     assert_eq![with_std!["(eqv? '() '())"], Ok(Value::Boolean(true))];
 }
 
 #[test]
-fn eqv_lambdas() {
+fn stdlib_eqv_lambdas() {
     assert_eq![
         with_std!["(eqv? (lambda () 'a) (lambda () 'a))"],
         Ok(Value::Boolean(false))
@@ -249,7 +249,7 @@ fn eqv_lambdas() {
 }
 
 #[test]
-fn eqv_native_procs() {
+fn stdlib_eqv_native_procs() {
     assert_eq![with_std!["(eqv? eqv? eqv?)"], Ok(Value::Boolean(true))];
 }
 
@@ -263,4 +263,12 @@ fn quotation_pair() {
     let borrow = pair.borrow();
     assert_eq![&borrow.0, &Value::Symbol("a".into())];
     assert_eq![&borrow.1, &Value::Symbol("b".into())];
+}
+
+#[test]
+fn stdlib_substraction_simple() {
+    assert_eq![with_std!["(-)"], Ok(Value::Integer(0))];
+    assert_eq![with_std!["(- 1)"], Ok(Value::Integer(-1))];
+    assert_eq![with_std!["(- 1 1 1)"], Ok(Value::Integer(-1))];
+    assert_eq![with_std!["(- 2 1 1)"], Ok(Value::Integer(0))];
 }

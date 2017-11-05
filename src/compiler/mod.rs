@@ -3,12 +3,13 @@
 use std::collections::VecDeque;
 use std::rc::Rc;
 
+
+use lexer::Num;
 use reader::{AbbreviationKind, Datum};
 use self::keywords::is_syntactic_keyword;
 use helpers::*;
 
 mod keywords;
-mod numbers;
 
 /// The "ISA" of the interpreter
 #[derive(Debug, Clone, PartialEq)]
@@ -20,6 +21,7 @@ pub enum Instruction {
     Symbol(ImmutableString),
     Integer(i32),
     Float(f32),
+    InvalidNumber,
     Nil,
     EmptyList,
     // ***
@@ -111,7 +113,11 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
         (_, Datum::Boolean(b)) => return simple_datum![Boolean, b],
         (_, Datum::Character(c)) => return simple_datum![Character, c],
         (_, Datum::String(s)) => return simple_datum![String, s.into()],
-        (_, Datum::Number(_)) => return Ok(vec![Instruction::Integer(0)]),
+        (_, Datum::Number(nt)) => match nt.into() {
+            Ok(Num::Integer(n)) => return simple_datum![Integer, n],
+            Ok(Num::Float(f)) => return simple_datum![Float, f],
+            Err(_) => return Ok(vec![Instruction::InvalidNumber])
+        }
         (
             _,
             Datum::Abbreviation {
