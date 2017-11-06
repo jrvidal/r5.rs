@@ -7,3 +7,4 @@ authors = ["Jose Roberto Vidal <vidal.roberto.j@gmail.com>"]
 gc = "*"
 log = "0.3.8"
 env_logger = "0.4.3"
+rustyline = "1.0.0"
