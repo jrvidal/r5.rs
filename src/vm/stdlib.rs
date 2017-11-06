@@ -4,7 +4,7 @@ use super::{shared, ExecutionError, Value, VmState, Branch, Pair};
 type NatFn = fn(&mut VmState, CallInfo, &Option<Branch>) -> Result<(), ExecutionError>;
 type CallInfo = (usize, bool);
 
-pub(super) const STDLIB: [(&'static str, NatFn, CallInfo); 20] = [
+pub(super) const STDLIB: [(&'static str, NatFn, CallInfo); 21] = [
     ("list", list, (0, true)),
     ("cons", cons, (2, false)),
     ("apply", apply, (2, false)),
@@ -15,6 +15,7 @@ pub(super) const STDLIB: [(&'static str, NatFn, CallInfo); 20] = [
     ("+", addition, (0, true)),
     ("*", multiplication, (0, true)),
     ("-", substraction, (0, true)),
+    ("<=", leq_than, (0, true)),
     ("null?", is_null, (1, false)),
     ("number?", is_number, (1, false)),
     ("list?", is_list, (1, false)),
@@ -185,6 +186,40 @@ fn substraction(vm: &mut VmState, (n_of_args, _): (usize, bool), _: &Option<Bran
     }
 
     vm.stack.push(acc);
+    Ok(())
+}
+
+fn leq_than(vm: &mut VmState, (n_of_args, _): (usize, bool), _: &Option<Branch>) -> Result<(), ExecutionError> {
+    if n_of_args == 0 {
+        vm.stack.push(Value::Boolean(true));
+        return Ok(())
+    }
+
+    let mut acc = true;
+    let mut numbers = vm.pop_as_vec(n_of_args).unwrap();
+    let mut last = numbers.pop().unwrap();
+
+    if !last.is_number() {
+        return Err(ExecutionError::BadArgType);
+    }
+
+    while let Some(n) = numbers.pop() {
+        acc = acc && match (last, &n) {
+            (Value::Integer(n), &Value::Integer(m)) => n <= m,
+            (Value::Integer(n), &Value::Float(f)) => (n as f32) <= f,
+            (Value::Float(f), &Value::Integer(n)) => f <= (n as f32),
+            (Value::Float(f), &Value::Float(g)) => f <= g,
+            _ => return Err(ExecutionError::BadArgType)
+        };
+
+        last = n;
+
+        if !acc {
+            break;
+        }
+    }
+
+    vm.stack.push(Value::Boolean(acc));
     Ok(())
 }
 

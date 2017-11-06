@@ -272,3 +272,33 @@ fn stdlib_substraction_simple() {
     assert_eq![with_std!["(- 1 1 1)"], Ok(Value::Integer(-1))];
     assert_eq![with_std!["(- 2 1 1)"], Ok(Value::Integer(0))];
 }
+
+#[test]
+fn stdlib_leq_than_simple() {
+    assert_eq![with_std!["(<=)"], Ok(Value::Boolean(true))];
+    assert_eq![with_std!["(<= 1)"], Ok(Value::Boolean(true))];
+    assert_eq![with_std!["(<= -1)"], Ok(Value::Boolean(true))];
+    assert_eq![with_std!["(<= 0)"], Ok(Value::Boolean(true))];
+    assert_eq![with_std!["(<= 0 1)"], Ok(Value::Boolean(true))];
+    assert_eq![with_std!["(<= -1 1)"], Ok(Value::Boolean(true))];
+    assert_eq![with_std!["(<= 2 1)"], Ok(Value::Boolean(false))];
+    assert_eq![with_std!["(<= 1 2 0)"], Ok(Value::Boolean(false))];
+}
+
+
+// http://rosettacode.org/wiki/Man_or_boy_test#Scheme
+#[test]
+fn man_or_boy() {
+    let code = "
+        (set! A (lambda (k x1 x2 x3 x4 x5)
+          (define (B)
+            (set! k (- k 1))
+            (A k B x1 x2 x3 x4))
+          (if (<= k 0)
+              (+ (x4) (x5))
+              (B))))
+
+        (A 10 (lambda () 1) (lambda () -1) (lambda () -1) (lambda () 1) (lambda () 0))
+    ";
+    assert_eq![with_std![code], Ok(Value::Integer(-67))];
+}

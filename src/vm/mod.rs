@@ -16,7 +16,7 @@ mod stack;
 mod value;
 mod stdlib;
 
-const MAX_CALL_STACK_DEPTH: usize = 255;
+const MAX_CALL_STACK_DEPTH: usize = 1024;
 
 impl Newable for GcShared<Environment> {
     fn new(&self) -> GcShared<Environment> {
