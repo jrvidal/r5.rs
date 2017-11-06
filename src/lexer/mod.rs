@@ -1,3 +1,4 @@
+//! Convert text into tokens
 
 #[macro_use]
 mod macros;
@@ -10,5 +11,6 @@ mod number;
 mod token_test;
 
 
-pub use self::token::{Token, token_stream};
-pub use self::number::{NumberToken};
+use self::token::TokenErrorClass;
+pub use self::token::{Token, Tokens};
+pub use self::number::{Num, NumberToken};

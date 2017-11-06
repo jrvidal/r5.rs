@@ -1,8 +1,10 @@
 extern crate r5rs;
 
 use std::io::{stdin, stdout, Write};
-use r5rs::lexer::*;
+
 use r5rs::reader::*;
+use r5rs::lexer::*;
+use r5rs::compiler::*;
 
 fn main() {
     let mut buffer = String::new();
@@ -10,6 +12,7 @@ fn main() {
 
     loop {
         buffer.clear();
+
 
         let prompt = stdout().write("> ".as_bytes()).and(stdout().flush());
 
@@ -32,10 +35,17 @@ fn main() {
             }
         };
 
-        match parse_datum(&mut tokens) {
-            Ok(Some(datum)) => println!("{:?}", datum),
-            Err(e) => println!("Invalid datum: {:?}", e),
-            Ok(None) => {}
-        }
+        let datum = match parse_datum(&mut tokens) {
+            Ok(Some(datum)) => datum,
+            Err(e) => {
+                println!("Invalid datum: {:?}", e);
+                continue;
+            }
+            Ok(None) => {
+                continue;
+            }
+        };
+
+        println!("{:?}", compile_expression(datum));
     }
 }

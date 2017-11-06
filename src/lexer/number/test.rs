@@ -1,13 +1,18 @@
 use super::*;
 use super::super::chars::Chars;
-use super::{parse_prefix, parse_real, parse_suffix, parse_complex};
+use super::{parse_complex, parse_prefix, parse_real, parse_suffix};
 
 #[test]
 fn prefix() {
     assert!(parse_prefix(&mut Chars::from_str("")).ok().unwrap() == (None, None));
-    assert!(parse_prefix(&mut Chars::from_str("#e")).ok().unwrap() == (Some(Exactness::Exact), None));
+    assert!(
+        parse_prefix(&mut Chars::from_str("#e")).ok().unwrap() == (Some(Exactness::Exact), None)
+    );
     assert!(parse_prefix(&mut Chars::from_str("#O")).ok().unwrap() == (None, Some(Radix::Octal)));
-    assert!(parse_prefix(&mut Chars::from_str("#d#I")).ok().unwrap() == (Some(Exactness::Inexact), Some(Radix::Decimal)));
+    assert!(
+        parse_prefix(&mut Chars::from_str("#d#I")).ok().unwrap()
+            == (Some(Exactness::Inexact), Some(Radix::Decimal))
+    );
     assert!(parse_prefix(&mut Chars::from_str("#d#")).is_err());
     assert!(parse_prefix(&mut Chars::from_str("#\\")).is_err());
 }
@@ -67,7 +72,6 @@ fn assert_int(t: &RealLiteral, fuzzy: u8, digits: &str) {
 
 #[test]
 fn parse_real_with_integer() {
-
     let n = "1";
     let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
     // Manual
@@ -81,12 +85,16 @@ fn parse_real_with_integer() {
 
     // Other radixes
     let n = "1010111";
-    let t = parse_real(&mut Chars::from_str(n), Some(Radix::Binary)).ok().unwrap();
+    let t = parse_real(&mut Chars::from_str(n), Some(Radix::Binary))
+        .ok()
+        .unwrap();
     assert_int(&t, 0, n);
 
     // Other radixes, case-insensitive
     let n = "10A01f1";
-    let t = parse_real(&mut Chars::from_str(n), Some(Radix::Hexadecimal)).ok().unwrap();
+    let t = parse_real(&mut Chars::from_str(n), Some(Radix::Hexadecimal))
+        .ok()
+        .unwrap();
     assert_int(&t, 0, "10a01f1");
 
     // Fuzzy digits
@@ -140,7 +148,6 @@ macro_rules! assert_frac {
 }
 #[test]
 fn parse_real_with_fraction() {
-
     let n = "1/2";
     let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
     assert_frac!(t, [0, "1"], [0, "2"]);
@@ -189,51 +196,62 @@ macro_rules! assert_dec {
 
 #[test]
 fn parse_real_with_decimal() {
+    let n = "1.2";
+    let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
+    assert_dec!(t, 0, "12", 1);
 
-    // let n = "1.2";
-    // let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
-    // assert_dec!(t, 0, "12", 1);
 
+    let n = "0.12";
+    let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
+    assert_dec!(t, 0, "012", 1);
 
-    // let n = "0.12";
-    // let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
-    // assert_dec!(t, 0, "012", 1);
+    let n = ".12";
+    let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
+    assert_dec!(t, 0, "12", 0);
 
-    // let n = ".12";
-    // let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
-    // assert_dec!(t, 0, "12", 0);
+    let n = "12.";
+    let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
+    assert_dec!(t, 0, "12", 2);
 
-    // let n = "12.";
-    // let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
-    // assert_dec!(t, 0, "12", 2);
+    let n = "1.2#";
+    let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
+    assert_dec!(t, 1, "12", 1);
 
-    // let n = "1.2#";
-    // let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
-    // assert_dec!(t, 1, "12", 1);
+    let n = "12#.#";
+    let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
+    assert_dec!(t, 2, "12", 3);
 
-    // let n = "12#.#";
-    // let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
-    // assert_dec!(t, 2, "12", 3);
+    let n = "12#.";
+    let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
+    assert_dec!(t, 1, "12", 3);
 
-    // let n = "12#.";
-    // let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
-    // assert_dec!(t, 1, "12", 3);
-
-    // let n = "12.E12";
-    // let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
-    // assert_dec!(t, 0, "12", 2, DecSuffix {
-    //     sign: None,
-    //     digits: "12".to_string(),
-    //     marker: ExpMarker::Default
-    // });
+    let n = "12.E12";
+    let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
+    assert_dec!(
+        t,
+        0,
+        "12",
+        2,
+        DecSuffix {
+            sign: None,
+            digits: "12".to_string(),
+            marker: ExpMarker::Default,
+        }
+    );
 
     let n = "12.3#f-44";
     let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
-    assert_dec!(t, 1, "123", 2, DecSuffix {
-        sign: Some(NumSign::Minus),
-        digits: "44".to_string(),
-        marker: ExpMarker::Single
-    });
+    assert_dec!(
+        t,
+        1,
+        "123",
+        2,
+        DecSuffix {
+            sign: Some(NumSign::Minus),
+            digits: "44".to_string(),
+            marker: ExpMarker::Single,
+        }
+    );
 }
 
 #[test]
@@ -292,7 +310,9 @@ fn parse_complex_with_cartesian() {
     assert_frac!(r.unwrap(), [0, "2"], [0, "1"]);
 
     let n = "+3aFi";
-    let t = parse_complex(&mut Chars::from_str(n), Some(Radix::Hexadecimal)).ok().unwrap();
+    let t = parse_complex(&mut Chars::from_str(n), Some(Radix::Hexadecimal))
+        .ok()
+        .unwrap();
     assert!(None == t.real_part());
     let (s, r) = t.imaginary_part();
     assert!(s == NumSign::Plus);
@@ -330,7 +350,9 @@ fn parse_complex_with_polar() {
     assert_int(r, 0, "23");
 
     let n = "3/A#@3#";
-    let t = parse_complex(&mut Chars::from_str(n), Some(Radix::Hexadecimal)).ok().unwrap();
+    let t = parse_complex(&mut Chars::from_str(n), Some(Radix::Hexadecimal))
+        .ok()
+        .unwrap();
     let (s, r) = t.modulus();
     assert!(s == None);
     assert_frac!(r, [0, "3"], [1, "a"]);
