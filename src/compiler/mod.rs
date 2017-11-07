@@ -492,17 +492,18 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
             // ...
             // <test k>, And, but no BranchUnless
             // <next>
-            let last_exp = datums.len() - 1;
+            let n_of_tests = datums.len();
             let tests: Vec<_> = datums
                 .into_iter()
                 .enumerate()
-                .map(|(i, d)| compile_expression_inner(d, tail && i == last_exp))
+                .map(|(i, d)| compile_expression_inner(d, tail && i == n_of_tests - 1))
                 .collect::<Result<_, _>>()?;
 
+            let n_of_tests = tests.len();
             let length = tests
                 .iter()
-                .fold(0, |acc, test: &Vec<_>| acc + test.len() + 2);
-            let n_of_tests = tests.len();
+                .fold(0, |acc, test: &Vec<_>| acc + test.len() + 2)
+                - if n_of_tests > 0 { 1 } else { 0 };
 
             let mut instructions = vec![Instruction::Boolean(true)];
             let mut traveled = 0;
@@ -513,7 +514,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                 instructions.push(Instruction::ROBranchUnless(
                     (length - traveled - test_len) as isize - 1,
                 ));
-                traveled += test_len;
+                traveled += test_len + 2;
             }
             // The last Branch is redundant
             if n_of_tests > 0 {
@@ -522,14 +523,13 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
             Ok(instructions)
         }
         (keywords::OR, _) => {
-            let last_exp = datums.len() - 1;
+            let n_of_tests = datums.len();
             let tests: Vec<_> = datums
                 .into_iter()
                 .enumerate()
-                .map(|(i, d)| compile_expression_inner(d, tail && i == last_exp))
+                .map(|(i, d)| compile_expression_inner(d, tail && i == n_of_tests - 1))
                 .collect::<Result<_, _>>()?;
 
-            let n_of_tests = tests.len();
             let length = tests
                 .iter()
                 .fold(0, |acc, test: &Vec<_>| acc + test.len() + 2)

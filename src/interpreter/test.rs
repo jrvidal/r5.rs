@@ -302,3 +302,21 @@ fn man_or_boy() {
     ";
     assert_eq![with_std![code], Ok(Value::Integer(-67))];
 }
+
+#[test]
+fn and_simple() {
+    assert_eq![with_null!("(and)"), Ok(Value::Boolean(true))];
+    assert_eq![with_null!("(and #t)"), Ok(Value::Boolean(true))];
+    assert_eq![with_null!("(and #f)"), Ok(Value::Boolean(false))];
+    assert_eq![with_null!("(and #f #t)"), Ok(Value::Boolean(false))];
+    assert_eq![with_null!("(and #t #f #t)"), Ok(Value::Boolean(false))];
+}
+
+#[test]
+fn or_simple() {
+    assert_eq![with_null!("(or)"), Ok(Value::Boolean(false))];
+    assert_eq![with_null!("(or #t)"), Ok(Value::Boolean(true))];
+    assert_eq![with_null!("(or #f)"), Ok(Value::Boolean(false))];
+    assert_eq![with_null!("(or #t #f)"), Ok(Value::Boolean(true))];
+    assert_eq![with_null!("(or #f #t #f)"), Ok(Value::Boolean(true))];
+}
