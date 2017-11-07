@@ -1,70 +1,86 @@
 extern crate env_logger;
+#[cfg(not(target_os = "emscripten"))]
 #[macro_use]
 extern crate log;
 extern crate r5rs;
+#[cfg(not(target_os = "emscripten"))]
 extern crate rustyline;
 
-use rustyline::error::ReadlineError;
+#[cfg(target_os = "emscripten")]
+fn main() {}
 
-
-use r5rs::reader::*;
-use r5rs::lexer::*;
-use r5rs::vm::*;
-use r5rs::compiler::*;
-
+#[cfg(not(target_os = "emscripten"))]
 fn main() {
-    env_logger::init().ok().expect("logger");
-    let mut rl = rustyline::Editor::<()>::new();
-    let environment = default_env();
+    not_web::main();
+}
 
-    loop {
-        let readline = rl.readline("> ");
-        let line = match readline {
-            Ok(line) => line,
-            Err(ReadlineError::Eof) => break,
-            Err(_) => continue,
-        };
+#[cfg(not(target_os = "emscripten"))]
+mod not_web {
 
-        rl.add_history_entry(&line);
+    use env_logger;
+    use r5rs::reader::*;
+    use r5rs::lexer::*;
+    use r5rs::vm::*;
+    use r5rs::compiler::*;
 
-        let mut tokens = match Tokens::new(line.chars()).collect() {
-            Ok(tokens) => tokens,
-            Err(e) => {
-                println!("Invalid input: {:?}", e);
-                continue;
-            }
-        };
+    use rustyline;
+    use rustyline::error::ReadlineError;
+
+    pub fn main() {
+        env_logger::init().ok().expect("logger");
+        let mut rl = rustyline::Editor::<()>::new();
+        let environment = default_env();
 
         loop {
-            let datum = match parse_datum(&mut tokens) {
-                Ok(Some(datum)) => datum,
+            let readline = rl.readline("> ");
+            let line = match readline {
+                Ok(line) => line,
+                Err(ReadlineError::Eof) => break,
+                Err(_) => continue,
+            };
+
+            rl.add_history_entry(&line);
+
+            let mut tokens = match Tokens::new(line.chars()).collect() {
+                Ok(tokens) => tokens,
                 Err(e) => {
-                    println!("Invalid datum: {:?}", e);
-                    break;
-                }
-                Ok(None) => {
-                    break;
+                    println!("Invalid input: {:?}", e);
+                    continue;
                 }
             };
 
-            let bytecode = match compile_expression(datum) {
-                Some(bytecode) => bytecode,
-                None => {
-                    println!("Invalid expression");
-                    break;
-                }
-            };
+            loop {
+                let datum = match parse_datum(&mut tokens) {
+                    Ok(Some(datum)) => datum,
+                    Err(e) => {
+                        println!("Invalid datum: {:?}", e);
+                        break;
+                    }
+                    Ok(None) => {
+                        break;
+                    }
+                };
 
-            debug!("Code:\n{:?}", bytecode);
-            let result = exec(&bytecode, environment.clone());
+                let bytecode = match compile_expression(datum) {
+                    Some(bytecode) => bytecode,
+                    None => {
+                        println!("Invalid expression");
+                        break;
+                    }
+                };
 
-            match result {
-                Ok(v) => println!("{}", v.to_repl()),
-                Err(e) => {
-                    println!("Error: {:?}", e);
-                    break;
-                }
-            };
+                debug!("Code:\n{:?}", bytecode);
+                let result = exec(&bytecode, environment.clone());
+
+                match result {
+                    Ok(v) => println!("{}", v.to_repl()),
+                    Err(e) => {
+                        println!("Error: {:?}", e);
+                        break;
+                    }
+                };
+            }
         }
     }
+
 }

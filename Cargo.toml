@@ -7,4 +7,9 @@ authors = ["Jose Roberto Vidal <vidal.roberto.j@gmail.com>"]
 gc = "*"
 log = "0.3.8"
 env_logger = "0.4.3"
+
+[target.'cfg(not(target_os = "emscripten"))'.dependencies]
 rustyline = "1.0.0"
+
+[target.'cfg(target_os = "emscripten")'.dependencies]
+stdweb = "0.1.3"

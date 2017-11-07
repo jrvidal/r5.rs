@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Emscripten-Generated Code</title>
+  </head>
+  <body>
+
+    <style>
+      .container {
+        margin-top: 30px;
+        width: 800px;
+        min-height: 400px;
+        margin: auto;
+        background: black;
+        padding: 20px 0;
+        font-family: monospace;
+        color: white;
+      }
+
+      pre {
+        margin: 0;
+      }
+
+      #input {
+        color: white;
+        background: black;
+        border: none;
+        outline: none;
+        display: inline-block;
+        padding: 0;
+        font-family: monospace;
+        width: 700px;
+        /*caret-color: transparent;*/
+      }
+
+      .prompt {
+        display: inline-block;
+      }
+    </style>
+
+    <div class="container">
+      <pre><code id="output">Loading...</code></pre>
+      <div>
+        <span class="prompt" style="display: none">&gt;</span><input type="text" id="input"></input>
+      </div>
+      
+    </div>
+
+    <script type='text/javascript'>
+      var Module = {
+        preRun: [],
+        postRun: [],
+        print: (function() {
+          var element = document.getElementById('output');
+          if (element) element.value = ''; // clear browser cache
+          return function(text) {
+            if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+            // These replacements are necessary if you render to raw HTML
+            //text = text.replace(/&/g, "&amp;");
+            //text = text.replace(/</g, "&lt;");
+            //text = text.replace(/>/g, "&gt;");
+            //text = text.replace('\n', '<br>', 'g');
+            console.log(text);
+            if (element) {
+              element.value += text + "\n";
+              element.scrollTop = element.scrollHeight; // focus on bottom
+            }
+          };
+        })(),
+        printErr: function(text) {
+          if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+          if (0) { // XXX disabled for safety typeof dump == 'function') {
+            dump(text + '\n'); // fast, straight to the real console
+          } else {
+            console.error(text);
+          }
+        },
+        setStatus: function(text) {
+          if (!Module.setStatus.last) Module.setStatus.last = { time: Date.now(), text: '' };
+          if (text === Module.setStatus.text) return;
+          var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
+          var now = Date.now();
+          if (m && now - Date.now() < 30) return; // if this is a progress update, skip it if too soon
+          if (m) {
+            text = m[1];
+          } else {
+          }
+        },
+        totalDependencies: 0,
+        monitorRunDependencies: function(left) {
+          this.totalDependencies = Math.max(this.totalDependencies, left);
+          Module.setStatus(left ? 'Preparing... (' + (this.totalDependencies-left) + '/' + this.totalDependencies + ')' : 'All downloads complete.');
+        }
+      };
+      Module.setStatus('Downloading...');
+      window.onerror = function(event) {
+        // TODO: do not warn on ok events like simulating an infinite loop or exitStatus
+        Module.setStatus('Exception thrown, see JavaScript console');
+        Module.setStatus = function(text) {
+          if (text) Module.printErr('[post-exception status] ' + text);
+        };
+      };
+
+      let resolve, loaded = new Promise(res => { resolve = res });
+      window.Scheme = {
+        process(cb) {
+          window.Scheme.doProcess = cb;
+          resolve();
+        }
+      };
+
+      window.addEventListener("load", onLoad);
+
+      let output;
+      let input;
+      let container;
+
+      function onLoad() {
+        output = document.getElementById("output");
+        input = document.getElementById("input");
+        container = document.querySelector(".container");
+
+        container.addEventListener("click", e => {
+          input.focus();
+        });
+        output.textContent += '\n';
+
+        loaded.then(onWasmReady);
+      }
+
+      function onWasmReady() {
+        output.textContent += '\n';
+        document.querySelector(".prompt").style.display = "";
+        input.addEventListener("keypress", onKeypress);
+        input.focus();
+      }
+
+      function onKeypress(e) {
+        if (e.code !== "Enter") return;
+        if (input.value.trim() === "") {
+          input.value = "";
+          output.textContent += '>\n';
+          return;
+        }
+
+        output.textContent += `>${input.value}\n`;
+        output.textContent += Scheme.doProcess(input.value) + "\n";
+        input.value = "";
+      }
+    </script>
+    <script async type="text/javascript" src="web.js"></script>
+  </body>
+</html>
