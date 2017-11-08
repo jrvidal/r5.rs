@@ -27,6 +27,8 @@ mod web {
         js!{
             Scheme.process(@{move |code: String| -> String { process(code, environment.clone()).unwrap_or("".to_owned()) } })
         }
+
+        stdweb::event_loop();
     }
 
     fn process(code: String, environment: GcShared<Environment>) -> Option<String> {
