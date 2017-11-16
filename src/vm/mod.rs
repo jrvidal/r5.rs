@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use self::stack::Stack;
 use self::gc::shared;
-pub use self::value::{NativeProcedure, Pair, Value};
+pub use self::value::{DeepEqual, NativeProcedure, Pair, Value};
 use compiler::Instruction;
 
 pub use self::gc::GcShared;

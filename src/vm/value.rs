@@ -45,11 +45,13 @@ unsafe impl<T: Trace> Trace for Pair<T> {
 
 
 // This PartialEq implementation corresponds to the native eqv? procedure
-// We've chosen a "hard" implementation where we compare pointers when possible without looking the contents of reference types
+// We've chosen a "hard" implementation where we compare pointers when possible
+// without looking the contents of reference types
 impl PartialEq<Value> for Value {
     fn eq(&self, other: &Value) -> bool {
         use self::Value::*;
         use self::NativeProcedure;
+
         match (self, other) {
             (&Nil, &Nil) | (&EmptyList, &EmptyList) => true,
             (&Float(f), &Float(g)) => f == g,
@@ -59,10 +61,7 @@ impl PartialEq<Value> for Value {
             (&Symbol(ref x), &Symbol(ref y)) => *x == *y,
             (&String(ref x), &String(ref y)) => x.borrow().as_ptr() == y.borrow().as_ptr(),
             (&Vector(ref x), &Vector(ref y)) => x.borrow().as_ptr() == y.borrow().as_ptr(),
-            (
-                &Value::Pair(ref pair),
-                &Value::Pair(ref pair2),
-            ) => {
+            (&Value::Pair(ref pair), &Value::Pair(ref pair2)) => {
                 use self::Pair;
                 let borrow = pair.borrow();
                 let borrow2 = pair2.borrow();
@@ -227,14 +226,14 @@ impl Value {
         }
     }
 
-    simple_type![is_vector, Value::Vector(..)];
-    simple_type![is_symbol, Value::Symbol(..)];
+    simple_type![is_vector, Value::Vector(..)]
+    simple_type![is_symbol, Value::Symbol(..)]
     simple_type![is_procedure, Value::Procedure{..}, Value::NativeProcedure(..)];
-    simple_type![is_string, Value::String(..)];
-    simple_type![is_char, Value::Character(..)];
-    simple_type![is_boolean, Value::Boolean(..)];
-    simple_type![is_null, Value::EmptyList];
-    simple_type![is_pair, Value::Pair(..)];
+    simple_type![is_string, Value::String(..)]
+    simple_type![is_char, Value::Character(..)]
+    simple_type![is_boolean, Value::Boolean(..)]
+    simple_type![is_null, Value::EmptyList]
+    simple_type![is_pair, Value::Pair(..)]
     simple_type![is_number, Value::Integer(_), Value::Float(_)];
 
     pub fn list_len(&self) -> Option<usize> {
@@ -249,6 +248,32 @@ impl Value {
         match *self {
             Value::Pair(ref pair) => Some(pair.clone()),
             _ => None,
+        }
+    }
+}
+
+pub trait DeepEqual {
+    fn equal(&self, other: &Self) -> bool;
+}
+
+impl DeepEqual for Value {
+    fn equal(&self, other: &Value) -> bool {
+        self == other || match (self, other) {
+            (&Value::String(ref s), &Value::String(ref s2)) => s == s2,
+            (&Value::Vector(ref v), &Value::Vector(ref v2)) => {
+                let vec = &*v.borrow();
+                let vec2 = &*v2.borrow();
+                vec.len() == vec2.len()
+                    && vec.iter()
+                        .zip(vec2.iter())
+                        .all(|(val, val2)| val.equal(val2))
+            }
+            (&Value::Pair(ref pair), &Value::Pair(ref pair2)) => {
+                let borrowed = pair.borrow();
+                let borrowed2 = pair2.borrow();
+                borrowed.0.equal(&borrowed2.0) && borrowed.1.equal(&borrowed2.1)
+            }
+            _ => false,
         }
     }
 }

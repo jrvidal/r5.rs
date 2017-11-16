@@ -1,10 +1,10 @@
 
-use super::{shared, ExecutionError, Value, VmState, Branch, Pair};
+use super::{shared, ExecutionError, Value, VmState, Branch, Pair, DeepEqual};
 
 type NatFn = fn(&mut VmState, CallInfo, &Option<Branch>) -> Result<(), ExecutionError>;
 type CallInfo = (usize, bool);
 
-pub(super) const STDLIB: [(&'static str, NatFn, CallInfo); 21] = [
+pub(super) const STDLIB: [(&'static str, NatFn, CallInfo); 22] = [
     ("list", list, (0, true)),
     ("cons", cons, (2, false)),
     ("apply", apply, (2, false)),
@@ -12,6 +12,7 @@ pub(super) const STDLIB: [(&'static str, NatFn, CallInfo); 21] = [
     ("cdr", cdr, (1, false)),
     ("force", force, (1, false)),
     ("eqv?", are_eqv, (2, false)),
+    ("equal?", are_equal, (2, false)),
     ("+", addition, (0, true)),
     ("*", multiplication, (0, true)),
     ("-", substraction, (0, true)),
@@ -100,6 +101,15 @@ fn are_eqv(vm: &mut VmState, _call_info: (usize, bool), _: &Option<Branch>) -> R
     let y = vm.stack.pop().unwrap();
 
     vm.stack.push(Value::Boolean(x == y));
+
+    Ok(())
+}
+
+fn are_equal(vm: &mut VmState, _call_info: (usize, bool), _: &Option<Branch>) -> Result<(), ExecutionError> {
+    let x = vm.stack.pop().unwrap();
+    let y = vm.stack.pop().unwrap();
+
+    vm.stack.push(Value::Boolean(x.equal(&y)));
 
     Ok(())
 }

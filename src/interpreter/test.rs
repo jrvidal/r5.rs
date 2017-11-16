@@ -320,3 +320,17 @@ fn or_simple() {
     assert_eq![with_null!("(or #t #f)"), Ok(Value::Boolean(true))];
     assert_eq![with_null!("(or #f #t #f)"), Ok(Value::Boolean(true))];
 }
+
+
+#[test]
+fn stdlib_equal_simple() {
+    assert_eq![
+        with_std!["(equal? '(a) (list 'a))"],
+        Ok(Value::Boolean(true))
+    ];
+    assert_eq![with_std!["(equal? '#(a) '#(a))"], Ok(Value::Boolean(true))];
+    assert_eq![
+        with_std!["(equal? \"foobar\" \"foobar\")"],
+        Ok(Value::Boolean(true))
+    ];
+}
