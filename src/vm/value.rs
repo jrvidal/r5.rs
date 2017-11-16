@@ -226,14 +226,22 @@ impl Value {
         }
     }
 
-    simple_type![is_vector, Value::Vector(..)]
-    simple_type![is_symbol, Value::Symbol(..)]
+
+    #[cfg_attr(rustfmt, rustfmt_skip)]
+    simple_type![is_vector, Value::Vector(..)];
+    #[cfg_attr(rustfmt, rustfmt_skip)]
+    simple_type![is_symbol, Value::Symbol(..)];
     simple_type![is_procedure, Value::Procedure{..}, Value::NativeProcedure(..)];
-    simple_type![is_string, Value::String(..)]
-    simple_type![is_char, Value::Character(..)]
-    simple_type![is_boolean, Value::Boolean(..)]
-    simple_type![is_null, Value::EmptyList]
-    simple_type![is_pair, Value::Pair(..)]
+    #[cfg_attr(rustfmt, rustfmt_skip)]
+    simple_type![is_string, Value::String(..)];
+    #[cfg_attr(rustfmt, rustfmt_skip)]
+    simple_type![is_char, Value::Character(..)];
+    #[cfg_attr(rustfmt, rustfmt_skip)]
+    simple_type![is_boolean, Value::Boolean(..)];
+    #[cfg_attr(rustfmt, rustfmt_skip)]
+    simple_type![is_null, Value::EmptyList];
+    #[cfg_attr(rustfmt, rustfmt_skip)]
+    simple_type![is_pair, Value::Pair(..)];
     simple_type![is_number, Value::Integer(_), Value::Float(_)];
 
     pub fn list_len(&self) -> Option<usize> {
