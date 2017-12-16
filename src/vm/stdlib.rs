@@ -4,7 +4,7 @@ use super::{shared, ExecutionError, Value, VmState, Branch, Pair, DeepEqual};
 type NatFn = fn(&mut VmState, CallInfo, &Option<Branch>) -> Result<(), ExecutionError>;
 type CallInfo = (usize, bool);
 
-pub(super) const STDLIB: [(&'static str, NatFn, CallInfo); 22] = [
+pub(super) const STDLIB: [(&str, NatFn, CallInfo); 22] = [
     ("list", list, (0, true)),
     ("cons", cons, (2, false)),
     ("apply", apply, (2, false)),
@@ -79,7 +79,7 @@ fn cdr(vm: &mut VmState, _call_info: (usize, bool), _: &Option<Branch>) -> Resul
 }
 
 fn force(vm: &mut VmState, call_info: (usize, bool), branch: &Option<Branch>) -> Result<(), ExecutionError> {
-    if let &Value::Promise { .. } = vm.stack.get(0).unwrap() {
+    if let Value::Promise { .. } = *vm.stack.get(0).unwrap() {
         // Pass
     } else {
         return Ok(());
@@ -127,11 +127,10 @@ fn addition(vm: &mut VmState, (n_of_args, _): (usize, bool), _: &Option<Branch>)
 
     let numbers = vm.pop_as_vec(n_of_args - 1).unwrap();
 
-    for n in numbers.into_iter() {
+    for n in numbers {
         acc = match (acc, n) {
             (Value::Integer(n), Value::Integer(m)) => Value::Integer(m + n),
-            (Value::Integer(n), Value::Float(f)) => Value::Float((n as f32) + f),
-            (Value::Float(f), Value::Integer(n)) => Value::Float((n as f32) + f),
+            (Value::Integer(n), Value::Float(f)) | (Value::Float(f), Value::Integer(n)) => Value::Float((n as f32) + f),
             (Value::Float(f), Value::Float(g)) => Value::Float(f + g),
             _ => return Err(ExecutionError::BadArgType)
         }
@@ -154,11 +153,10 @@ fn multiplication(vm: &mut VmState, (n_of_args, _): (usize, bool), _: &Option<Br
 
     let numbers = vm.pop_as_vec(n_of_args - 1).unwrap();
 
-    for n in numbers.into_iter() {
+    for n in numbers {
         acc = match (acc, n) {
             (Value::Integer(n), Value::Integer(m)) => Value::Integer(m * n),
-            (Value::Integer(n), Value::Float(f)) => Value::Float((n as f32) * f),
-            (Value::Float(f), Value::Integer(n)) => Value::Float((n as f32) * f),
+            (Value::Integer(n), Value::Float(f))| (Value::Float(f), Value::Integer(n)) => Value::Float((n as f32) * f),
             (Value::Float(f), Value::Float(g)) => Value::Float(f * g),
             _ => return Err(ExecutionError::BadArgType)
         }
@@ -185,7 +183,7 @@ fn substraction(vm: &mut VmState, (n_of_args, _): (usize, bool), _: &Option<Bran
         return Err(ExecutionError::BadArgType);
     }
 
-    for n in numbers.into_iter() {
+    for n in numbers {
         acc = match (acc, n) {
             (Value::Integer(n), Value::Integer(m)) => Value::Integer(n - m),
             (Value::Integer(n), Value::Float(f)) => Value::Float((n as f32) - f),

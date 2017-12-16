@@ -1,4 +1,3 @@
-use std::ascii::AsciiExt;
 use super::chars::{Chars, LexerIterator};
 
 /**
@@ -98,8 +97,8 @@ enum ParsingState {
     String,
 }
 
-const CHAR_NAME_SPACE: &'static [char] = &['s', 'p', 'a', 'c', 'e'];
-const CHAR_NAME_NEWLINE: &'static [char] = &['n', 'e', 'w', 'l', 'i', 'n', 'e'];
+const CHAR_NAME_SPACE: &[char] = &['s', 'p', 'a', 'c', 'e'];
+const CHAR_NAME_NEWLINE: &[char] = &['n', 'e', 'w', 'l', 'i', 'n', 'e'];
 
 
 pub fn next_token<T: LexerIterator>(stream: &mut T) -> Result<Option<Token>, TokenizerError> {

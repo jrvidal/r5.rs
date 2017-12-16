@@ -11,9 +11,9 @@ fn main() {
     loop {
         buffer.clear();
 
-        let prompt = stdout().write("> ".as_bytes()).and(stdout().flush());
+        let prompt = stdout().write(b"> ").and(stdout().flush());
 
-        if let Err(_) = prompt {
+        if prompt.is_err() {
             panic!("IO error");
         }
 

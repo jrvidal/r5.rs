@@ -41,7 +41,7 @@ unsafe impl<V: Trace> Trace for Environment<V> {
         if let Some(ref env) = this.parent {
             mark(env);
         }
-        for (_, v) in this.bindings.iter() {
+        for (_, v) in &this.bindings {
             mark(v);
         }
     });

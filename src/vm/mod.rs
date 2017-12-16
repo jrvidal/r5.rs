@@ -228,7 +228,7 @@ pub fn exec(
         let instruction = branch
             .as_ref()
             .map(|branch| &(**branch)[vm.pc])
-            .or(bytecode.get(vm.pc))
+            .or_else(|| bytecode.get(vm.pc))
             .ok_or(Internal("PC overflow"))?;
 
         debug!(
@@ -293,7 +293,7 @@ pub fn exec(
             Instruction::Lambda { ref code, arity } => {
                 let environment = vm.environment.clone();
                 let procedure = Value::Procedure {
-                    code: code.clone(),
+                    code: Rc::clone(code),
                     environment,
                     arity,
                 };
@@ -302,7 +302,7 @@ pub fn exec(
 
             Instruction::Promise(ref code) => {
                 let promise = Value::Promise {
-                    code: code.clone(),
+                    code: Rc::clone(code),
                     environment: vm.environment.clone(),
                 };
                 vm.stack.push(promise);
@@ -434,7 +434,7 @@ pub fn exec(
 pub fn default_env() -> GcShared<Environment> {
     let mut env = Environment::default();
 
-    for &(name, fun, arity) in stdlib::STDLIB.iter() {
+    for &(name, fun, arity) in &stdlib::STDLIB {
         env.define(
             name.into(),
             Value::NativeProcedure(NativeProcedure { fun, arity }),

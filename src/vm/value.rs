@@ -202,15 +202,14 @@ impl Value {
             }
             Value::Symbol(ref s) => format!("{}", *s),
             Value::String(ref s) => "\"".to_owned() + &escape(&*s.borrow()) + "\"",
-            Value::Procedure { .. } => "<procedure>".to_owned(),
-            Value::NativeProcedure { .. } => "<procedure>".to_owned(),
+            Value::Procedure { .. } | Value::NativeProcedure { .. } => "<procedure>".to_owned(),
             Value::Vector(ref vals) => {
                 vals.borrow()
                     .iter()
                     .fold("#(".into(), |acc: String, val| acc + &val.to_repl())
                     + ")"
             }
-            ref pair @ Value::Pair { .. } => format!("({})", pair_to_repl(&pair).1),
+            ref pair @ Value::Pair { .. } => format!("({})", pair_to_repl(pair).1),
             Value::Promise { .. } => "<promise>".to_owned(),
             Value::Integer(n) => format!("{}", n),
             Value::Float(f) => format!("{}", f),
@@ -303,7 +302,7 @@ fn pair_to_repl(value: &Value) -> (bool, String) {
         Value::Pair(ref pair) => {
             let (is_list, s) = pair_to_repl(&pair.borrow().1);
             let result = (&pair.borrow().0).to_repl() + if is_list {
-                if s.len() > 0 {
+                if !s.is_empty() {
                     " "
                 } else {
                     ""
@@ -317,5 +316,5 @@ fn pair_to_repl(value: &Value) -> (bool, String) {
         _ => {}
     };
 
-    return (false, value.to_repl());
+    (false, value.to_repl())
 }

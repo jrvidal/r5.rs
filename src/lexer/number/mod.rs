@@ -154,7 +154,7 @@ impl RealLiteral {
 
                 let has_suffix = suffix
                     .as_ref()
-                    .map(|suf| suf.digits.len() > 0)
+                    .map(|suf| !suf.digits.is_empty())
                     .unwrap_or(false);
 
                 if has_suffix {
@@ -164,7 +164,7 @@ impl RealLiteral {
                         let sign: char = suffix.sign.unwrap().into();
                         digits.push(sign);
                     }
-                    digits.extend(suffix.digits.chars());
+                    digits.push_str(&suffix.digits);
                 }
 
                 Ok(Num::Float(f32::from_str(&digits)?))
@@ -543,7 +543,7 @@ fn parse_complex<T: LexerIterator>(
 
     let peek = stream.peek(0);
     match peek {
-        _ if !is_delimiter!(peek) => return Err(TokenErrorClass::BadDelimiter),
+        _ if !is_delimiter!(peek) => Err(TokenErrorClass::BadDelimiter),
         _ => if cartesian {
             Ok(ComplexLiteral::Cartesian(
                 Some((first_sign, first_real)),
@@ -598,11 +598,11 @@ fn parse_real<T: LexerIterator>(
         let peek = stream.peek(0);
 
         match peek {
-            Some('#') if digits.len() > 0 => {
+            Some('#') if !digits.is_empty() => {
                 pounds += 1;
             }
             Some('/') => match num_type {
-                Number::Int if digits.len() > 0 => {
+                Number::Int if !digits.is_empty() => {
                     num_type = Number::Frac;
                     numerator = Some((digits, pounds));
                     digits = String::new();
@@ -647,7 +647,7 @@ fn parse_real<T: LexerIterator>(
         stream.next();
     }
 
-    if digits.len() == 0 {
+    if digits.is_empty() {
         return Err(TokenErrorClass::EmptyNumber);
     }
 
@@ -694,13 +694,13 @@ fn parse_suffix<T: LexerIterator>(stream: &mut T) -> Result<DecSuffix, String> {
         }
     }
 
-    if digits.len() == 0 {
-        return Err("bad marker!".to_string());
+    if digits.is_empty() {
+        Err("bad marker!".to_string())
     } else {
-        return Ok(DecSuffix {
+        Ok(DecSuffix {
             sign: sign,
             marker: marker,
             digits: digits,
-        });
+        })
     }
 }

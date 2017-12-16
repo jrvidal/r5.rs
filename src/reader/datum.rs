@@ -87,9 +87,7 @@ pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, Reader
 
             ok_some!(Datum::Vector(datums))
         }
-        _ => {
-            return Err(ReaderError::UnexpectedToken);
-        }
+        _ => Err(ReaderError::UnexpectedToken)
     }
 }
 
@@ -105,14 +103,14 @@ fn parse_list_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, Reade
                 stream.pop_front();
                 ret_val!(Datum::List(datums));
             }
-            &Token::Close if is_pair && datums.len() > 0 && last.is_some() => {
+            &Token::Close if is_pair && !datums.is_empty() && last.is_some() => {
                 stream.pop_front();
                 ret_val!(Datum::Pair {
                     car: datums,
                     cdr: last.unwrap(),
                 });
             }
-            &Token::Dot if is_pair == false => {
+            &Token::Dot if !is_pair => {
                 is_pair = true;
                 stream.pop_front();
             }

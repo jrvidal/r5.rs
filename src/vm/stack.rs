@@ -71,7 +71,7 @@ impl<T: Finalize> Finalize for Stack<T> {}
 
 unsafe impl<T: Trace> Trace for Stack<T> {
     custom_trace!(this, {
-        for x in this.0.iter() {
+        for x in &this.0 {
             mark(x);
         }
     });

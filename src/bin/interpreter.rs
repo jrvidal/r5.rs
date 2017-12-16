@@ -27,7 +27,7 @@ mod not_web {
     use rustyline::error::ReadlineError;
 
     pub fn main() {
-        env_logger::init().ok().expect("logger");
+        env_logger::init().expect("logger");
         let mut rl = rustyline::Editor::<()>::new();
         let environment = default_env();
 

@@ -143,7 +143,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
         _ => return Err(ParsingError::Illegal),
     };
 
-    check![datums.len() > 0, ParsingError::Illegal];
+    check![!datums.is_empty(), ParsingError::Illegal];
 
     let head = datums.pop_front().unwrap();
     let symbol = &match keyword_name(head.clone()) {
@@ -203,7 +203,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
         // Lambda
         (keywords::LAMBDA, l) if l >= 2 => {
             let formals = parse_lambda_formals_exp(datums.pop_front().unwrap())?;
-            return compile_lambda_exp(formals, datums);
+            compile_lambda_exp(formals, datums)
         }
 
         (keywords::COND, l) if l >= 1 => {
@@ -212,7 +212,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
             let mut clauses = vec![];
             let mut total_len = else_expressions.as_ref().map(|e| e.len()).unwrap_or(1);
 
-            for datum in datums.into_iter() {
+            for datum in datums {
                 let mut datums = if let Datum::List(datums) = datum {
                     datums
                 } else {
@@ -267,7 +267,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
             let mut instructions = vec![];
             let mut walked_distance = 0;
 
-            for (test, sequence, arrow) in clauses.into_iter() {
+            for (test, sequence, arrow) in clauses {
                 let test_len = test.len();
                 let seq_len = sequence.len();
                 let test_only_clause = sequence.is_empty();
@@ -331,7 +331,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
 
             let mut clauses = vec![];
 
-            for datum in datums.into_iter() {
+            for datum in datums {
                 let mut datums = if let Datum::List(l) = datum {
                     l
                 } else {
@@ -347,7 +347,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                 };
 
                 // If no cases, we don't need to emit this branch
-                if cases.len() == 0 {
+                if cases.is_empty() {
                     continue;
                 }
 
@@ -369,10 +369,10 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
             let mut instructions = key;
             let mut traveled = 0;
 
-            for (cases, sequence, cases_len) in clauses.into_iter() {
+            for (cases, sequence, cases_len) in clauses {
                 let mut diff_to_sequence = cases_len + 2;
 
-                for case in cases.into_iter() {
+                for case in cases {
                     diff_to_sequence -= case.len();
                     instructions.extend(case);
                     instructions.push(Instruction::Eq);
@@ -417,7 +417,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                 let mut inits = VecDeque::new();
                 let mut steps = vec![];
 
-                for variable in variables.into_iter() {
+                for variable in variables {
                     let mut parts = variable.list().ok_or(ParsingError::Illegal)?;
                     check![parts.len() == 2 || parts.len() == 3, ParsingError::Illegal];
                     let var = parts.pop_front().unwrap();
@@ -476,10 +476,10 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
 
             instructions.push(Instruction::Branch(-((diff_to_sequence + test_len) as isize)));
 
-            if sequence.len() > 0 {
-                instructions.extend(sequence)
-            } else {
+            if sequence.is_empty() {
                 instructions.push(Instruction::Nil);
+            } else {
+                instructions.extend(sequence)
             }
 
             Ok(instructions)
@@ -553,7 +553,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
 
         // TODO: unclear if an empty begin is valid
         (keywords::BEGIN, _) => {
-            if datums.len() == 0 {
+            if datums.is_empty() {
                 return Ok(vec![Instruction::Nil]);
             }
 
@@ -602,7 +602,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
             compiled.push(Instruction::PopEnv);
             Ok(compiled)
         },
-        _ => return Err(ParsingError::Illegal),
+        _ => Err(ParsingError::Illegal),
     }
 }
 
@@ -613,7 +613,7 @@ fn compile_quotation(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
         Datum::List(datums) => {
             let mut instructions = vec![];
             let n = datums.len();
-            for d in datums.into_iter() {
+            for d in datums {
                 instructions.extend(compile_quotation(d)?);
             }
             instructions.push(Instruction::List(n, false));
@@ -622,7 +622,7 @@ fn compile_quotation(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
         Datum::Pair { car, cdr } => {
             let mut instructions = vec![];
             let n = car.len() - 1;
-            for d in car.into_iter() {
+            for d in car {
                 instructions.extend(compile_quotation(d)?);
             }
             instructions.extend(compile_quotation(*cdr)?);
@@ -667,10 +667,10 @@ fn compile_else_clause(
     tail: bool
 ) -> Result<Option<(Vec<Instruction>)>, ParsingError> {
     let mut else_clause = match datums.back().cloned() {
-        Some(Datum::List(l)) => if l.len() > 0 {
-            l
-        } else {
+        Some(Datum::List(l)) => if l.is_empty() {
             return Ok(None);
+        } else {
+            l
         },
         _ => return Ok(None),
     };
@@ -682,7 +682,7 @@ fn compile_else_clause(
 
     datums.pop_back();
 
-    check![else_clause.len() > 0, ParsingError::Illegal];
+    check![!else_clause.is_empty(), ParsingError::Illegal];
 
     let main = else_clause.pop_back().unwrap();
     let mut instructions = else_clause.compiled()?;
@@ -719,7 +719,7 @@ fn compile_let_exp(
             let variable = parse_variable(pair.pop_front().unwrap())?;
             let init = compile_expression_inner(pair.pop_front().unwrap(), false)?;
 
-            Ok((variable.into(), init))
+            Ok((variable, init))
         })
         .collect::<Result<_, _>>()?;
 
@@ -728,7 +728,7 @@ fn compile_let_exp(
     match let_type {
         LetExp::Let => {
             let mut definitions = vec![];
-            for (v, init) in bindings_list.into_iter() {
+            for (v, init) in bindings_list {
                 instructions.extend(init);
                 definitions.push(Instruction::DefineVar(v.into()));
             }
@@ -740,18 +740,18 @@ fn compile_let_exp(
                 instructions.push(def);
             }
         }
-        LetExp::LetStar => for (v, init) in bindings_list.into_iter() {
+        LetExp::LetStar => for (v, init) in bindings_list {
             instructions.push(Instruction::NewEnv);
             instructions.extend(init);
             instructions.push(Instruction::DefineVar(v.into()));
         },
         LetExp::LetRec => {
             instructions.push(Instruction::NewEnv);
-            for &(ref v, _) in bindings_list.iter() {
+            for &(ref v, _) in &bindings_list {
                 instructions.push(Instruction::Nil);
                 instructions.push(Instruction::DefineVar(v.clone().into()));
             }
-            for (v, init) in bindings_list.into_iter() {
+            for (v, init) in bindings_list {
                 instructions.extend(init);
                 instructions.push(Instruction::DefineVar(v.into()));
             }
@@ -759,7 +759,7 @@ fn compile_let_exp(
         LetExp::NamedLet => {
             let mut definitions = vec![];
             let mut bindings = VecDeque::new();
-            for (v, init) in bindings_list.into_iter() {
+            for (v, init) in bindings_list {
                 instructions.extend(init);
                 definitions.push(Instruction::DefineVar(v.clone().into()));
                 bindings.push_back(v.clone())
@@ -797,7 +797,7 @@ fn named_let_body(variable: String, bindings: VecDeque<String>, body: VecDeque<D
     let call = {
         let mut vec = VecDeque::new();
         vec.push_back(Datum::Symbol(variable.clone()));
-        vec.extend(bindings.clone().into_iter().map(|v| Datum::Symbol(v)));
+        vec.extend(bindings.clone().into_iter().map(Datum::Symbol));
         Datum::List(vec)
     };
     let lambda = {
@@ -847,7 +847,7 @@ fn compile_lambda_exp(
     let arity = (formals.0.len(), formals.1.is_some());
     let mut args = {
         let mut args = formals.0;
-        args.extend(formals.1.into_iter());
+        args.extend(formals.1);
         args
     };
 
@@ -869,13 +869,13 @@ fn compile_lambda_exp(
 fn compile_body(mut datums: VecDeque<Datum>, tail: bool) -> Result<Vec<Instruction>, ParsingError> {
     let definitions = compile_definitions(&mut datums);
 
-    check![datums.len() > 0, ParsingError::Illegal];
+    check![!datums.is_empty(), ParsingError::Illegal];
 
     let sequence = compile_sequence(datums, tail)?;
 
     let mut instructions = vec![];
 
-    for def in definitions.into_iter() {
+    for def in definitions {
         instructions.extend(def);
     }
 
@@ -885,7 +885,7 @@ fn compile_body(mut datums: VecDeque<Datum>, tail: bool) -> Result<Vec<Instructi
 }
 
 fn compile_sequence(mut datums: VecDeque<Datum>, tail: bool) -> Result<Vec<Instruction>, ParsingError> {
-    if datums.len() == 0 {
+    if datums.is_empty() {
         return Ok(vec![]);
     }
 
@@ -898,7 +898,7 @@ fn compile_sequence(mut datums: VecDeque<Datum>, tail: bool) -> Result<Vec<Instr
 
     let mut instructions = vec![];
 
-    for command in commands.into_iter() {
+    for command in commands {
         instructions.extend(command);
         instructions.push(Instruction::Pop);
     }
@@ -911,7 +911,7 @@ fn compile_sequence(mut datums: VecDeque<Datum>, tail: bool) -> Result<Vec<Instr
 fn compile_definition(datum: Datum, tail: bool) -> Result<Vec<Instruction>, ParsingError> {
     let mut list = datum.list().ok_or(ParsingError::Illegal)?;
 
-    check![list.len() > 0, ParsingError::Illegal];
+    check![!list.is_empty(), ParsingError::Illegal];
 
     let symbol = keyword_name(list.pop_front().unwrap()).ok_or(ParsingError::Illegal)?;
 
@@ -939,7 +939,7 @@ fn compile_definition(datum: Datum, tail: bool) -> Result<Vec<Instruction>, Pars
                     instructions
                 }
                 (_, (mut args, None), _) => {
-                    check![args.len() > 0, ParsingError::Illegal];
+                    check![!args.is_empty(), ParsingError::Illegal];
 
                     let variable = args.remove(0);
                     let mut instructions = compile_lambda_exp((args, None), list)?;
@@ -1051,7 +1051,7 @@ impl CompilerHelper for VecDeque<Datum> {
             return Ok(vec![]);
         };
 
-        for d in self.into_iter() {
+        for d in self {
             acc.extend(compile_expression_inner(d, false)?);
         }
 
@@ -1073,7 +1073,7 @@ fn find_unused_vars(instructions: &[Instruction]) -> (String, String) {
 
     loop {
         let mut overlap = false;
-        for instruction in instructions.iter() {
+        for instruction in instructions {
             match *instruction {
                 Instruction::LoadVar(ref v) | Instruction::DefineVar(ref v) | Instruction::SetVar(ref v) => {
                     let vstring : &String = &*v;
