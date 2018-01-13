@@ -6,7 +6,6 @@ extern crate stdweb;
 #[cfg(not(target_os = "emscripten"))]
 fn main() {}
 
-
 #[cfg(target_os = "emscripten")]
 fn main() {
     web::main();
@@ -38,7 +37,6 @@ mod web {
                 return Some(format!("Invalid input: {:?}", e));
             }
         };
-
 
         let mut last = None;
         loop {

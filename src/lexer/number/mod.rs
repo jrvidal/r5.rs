@@ -7,7 +7,6 @@ use super::TokenErrorClass;
 #[cfg(test)]
 mod test;
 
-
 #[derive(Debug, PartialEq, Clone)]
 pub struct NumberToken {
     exactness: Option<Exactness>,
@@ -20,12 +19,10 @@ impl NumberToken {
     pub fn parse<T: LexerIterator>(stream: &mut T) -> Result<NumberToken, TokenErrorClass> {
         parse_prefix(stream)
             .and_then(|(e, r)| parse_complex(stream, r).map(|n| (e, r, n)))
-            .map(|(e, r, n)| {
-                NumberToken {
-                    exactness: e,
-                    radix: r,
-                    number: n,
-                }
+            .map(|(e, r, n)| NumberToken {
+                exactness: e,
+                radix: r,
+                number: n,
             })
     }
 }
@@ -72,8 +69,6 @@ impl Neg for Num {
 
 pub struct InvalidNumber;
 
-
-
 #[derive(Debug, PartialEq, Clone)]
 enum ComplexLiteral {
     Cartesian(
@@ -88,7 +83,10 @@ enum ComplexLiteral {
 #[derive(Debug, PartialEq, Clone)]
 // Actually an unsigned real
 enum RealLiteral {
-    Integer { digits: String, pounds: u8 },
+    Integer {
+        digits: String,
+        pounds: u8,
+    },
     Fraction {
         numerator: (String, u8),
         denominator: (String, u8),
@@ -517,7 +515,6 @@ fn parse_complex<T: LexerIterator>(
         _ if is_delimiter!(peek) => return Ok(ComplexLiteral::Real(first_sign, first_real)),
         _ => return Err(TokenErrorClass::BadDelimiter),
     }
-
 
     // a±i
     if cartesian && stream.peek(0) == Some('i') && is_delimiter!(stream.peek(1)) {

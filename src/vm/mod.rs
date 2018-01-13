@@ -192,7 +192,6 @@ impl VmState {
     }
 }
 
-
 pub fn exec(
     bytecode: &[Instruction],
     environment: GcShared<Environment>,

@@ -1,4 +1,3 @@
-
 use vm::{default_env, null_env, ExecutionError, Value};
 use super::{interpret, InterpreterError};
 
@@ -206,7 +205,6 @@ fn let_order() {
     assert_eq![with_null!["(let ((x 'a) (y x)) x)"], rt_err![UnboundVar]];
 }
 
-
 #[test]
 fn let_star_order() {
     assert_eq![
@@ -285,7 +283,6 @@ fn stdlib_leq_than_simple() {
     assert_eq![with_std!["(<= 1 2 0)"], Ok(Value::Boolean(false))];
 }
 
-
 // http://rosettacode.org/wiki/Man_or_boy_test#Scheme
 #[test]
 fn man_or_boy() {
@@ -320,7 +317,6 @@ fn or_simple() {
     assert_eq![with_null!("(or #t #f)"), Ok(Value::Boolean(true))];
     assert_eq![with_null!("(or #f #t #f)"), Ok(Value::Boolean(true))];
 }
-
 
 #[test]
 fn stdlib_equal_simple() {

@@ -43,7 +43,6 @@ unsafe impl<T: Trace> Trace for Pair<T> {
     });
 }
 
-
 // This PartialEq implementation corresponds to the native eqv? procedure
 // We've chosen a "hard" implementation where we compare pointers when possible
 // without looking the contents of reference types
@@ -124,24 +123,14 @@ unsafe impl Trace for Value {
             Promise {
                 ref environment, ..
             } => mark(environment),
-            Nil |
-            EmptyList |
-            Symbol(_) |
-            Boolean(_) |
-            Character(_) |
-            NativeProcedure(_) |
-            Integer(_) |
-            Float(_) |
-            InvalidNumber => {}
+            Nil | EmptyList | Symbol(_) | Boolean(_) | Character(_) | NativeProcedure(_)
+            | Integer(_) | Float(_) | InvalidNumber => {}
         }
     });
 }
 
-
 type CallInfo = (usize, bool);
-type NatFn = fn(&mut VmState, CallInfo, &Option<Branch>)
-    -> Result<(), ExecutionError>;
-
+type NatFn = fn(&mut VmState, CallInfo, &Option<Branch>) -> Result<(), ExecutionError>;
 
 #[derive(Clone)]
 pub struct NativeProcedure {
@@ -225,23 +214,16 @@ impl Value {
         }
     }
 
-
-    #[cfg_attr(rustfmt, rustfmt_skip)]
-    simple_type![is_vector, Value::Vector(..)];
-    #[cfg_attr(rustfmt, rustfmt_skip)]
-    simple_type![is_symbol, Value::Symbol(..)];
-    simple_type![is_procedure, Value::Procedure{..}, Value::NativeProcedure(..)];
-    #[cfg_attr(rustfmt, rustfmt_skip)]
-    simple_type![is_string, Value::String(..)];
-    #[cfg_attr(rustfmt, rustfmt_skip)]
-    simple_type![is_char, Value::Character(..)];
-    #[cfg_attr(rustfmt, rustfmt_skip)]
-    simple_type![is_boolean, Value::Boolean(..)];
-    #[cfg_attr(rustfmt, rustfmt_skip)]
-    simple_type![is_null, Value::EmptyList];
-    #[cfg_attr(rustfmt, rustfmt_skip)]
-    simple_type![is_pair, Value::Pair(..)];
-    simple_type![is_number, Value::Integer(_), Value::Float(_)];
+    // TODO: change to brackets if/when rustfmt allows
+    simple_type!(is_vector, Value::Vector(..));
+    simple_type!(is_symbol, Value::Symbol(..));
+    simple_type!(is_procedure, Value::Procedure{..}, Value::NativeProcedure(..));
+    simple_type!(is_string, Value::String(..));
+    simple_type!(is_char, Value::Character(..));
+    simple_type!(is_boolean, Value::Boolean(..));
+    simple_type!(is_null, Value::EmptyList);
+    simple_type!(is_pair, Value::Pair(..));
+    simple_type!(is_number, Value::Integer(_), Value::Float(_));
 
     pub fn list_len(&self) -> Option<usize> {
         match *self {
@@ -284,7 +266,6 @@ impl DeepEqual for Value {
         }
     }
 }
-
 
 fn escape(s: &str) -> String {
     s.chars()

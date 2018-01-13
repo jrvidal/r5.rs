@@ -3,7 +3,6 @@
 use std::collections::VecDeque;
 use std::rc::Rc;
 
-
 use lexer::Num;
 use reader::{AbbreviationKind, Datum};
 use self::keywords::is_syntactic_keyword;
@@ -116,8 +115,8 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
         (_, Datum::Number(nt)) => match nt.into() {
             Ok(Num::Integer(n)) => return simple_datum![Integer, n],
             Ok(Num::Float(f)) => return simple_datum![Float, f],
-            Err(_) => return Ok(vec![Instruction::InvalidNumber])
-        }
+            Err(_) => return Ok(vec![Instruction::InvalidNumber]),
+        },
         (
             _,
             Datum::Abbreviation {
@@ -223,7 +222,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
 
                 let arrow = match datums.get(1) {
                     Some(&Datum::Symbol(ref s)) if s == keywords::ARROW => true,
-                    _ => false
+                    _ => false,
                 };
 
                 check![!(arrow && datums.len() != 3), ParsingError::Illegal];
@@ -291,7 +290,6 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                 instructions.push(branch_to_next);
                 instructions.extend(sequence);
 
-
                 let offset = test_len + 1 + seq_len + if arrow { 2 } else { 0 };
 
                 let diff_to_end = total_len - walked_distance - offset;
@@ -305,21 +303,19 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                     ]);
                 } else {
                     instructions.push(Instruction::Branch(diff_to_end as isize));
-                    if test_only_clause { instructions.push(Instruction::Pop); }
+                    if test_only_clause {
+                        instructions.push(Instruction::Pop);
+                    }
                 }
 
-                let step = offset + 1 + if arrow || test_only_clause {
-                    1
-                } else {
-                    0
-                };
+                let step = offset + 1 + if arrow || test_only_clause { 1 } else { 0 };
 
                 walked_distance += step;
             }
 
             match else_expressions {
                 Some(ins) => instructions.extend(ins),
-                None => instructions.push(Instruction::Nil)
+                None => instructions.push(Instruction::Nil),
             }
 
             Ok(instructions)
@@ -338,13 +334,16 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                     return Err(ParsingError::Illegal);
                 };
 
-                check![datums.len() >=2, ParsingError::Illegal];
+                check![datums.len() >= 2, ParsingError::Illegal];
 
-                let cases : Vec<Vec<Instruction>> = if let Datum::List(l) = datums.pop_front().unwrap() {
-                    l.into_iter().map(compile_quotation).collect::<Result<_, _>>()?
-                } else {
-                    return Err(ParsingError::Illegal);
-                };
+                let cases: Vec<Vec<Instruction>> =
+                    if let Datum::List(l) = datums.pop_front().unwrap() {
+                        l.into_iter()
+                            .map(compile_quotation)
+                            .collect::<Result<_, _>>()?
+                    } else {
+                        return Err(ParsingError::Illegal);
+                    };
 
                 // If no cases, we don't need to emit this branch
                 if cases.is_empty() {
@@ -381,14 +380,12 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                     diff_to_sequence -= 1;
                 }
 
-
                 let seq_len = sequence.len();
                 instructions.push(Instruction::Branch(seq_len as isize + 3));
                 instructions.push(Instruction::Pop);
 
                 let offset = cases_len + seq_len + 3;
                 traveled += offset;
-
 
                 instructions.extend(sequence);
                 instructions.push(Instruction::Branch((total_len - traveled) as isize + 1));
@@ -398,7 +395,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
 
             match else_expressions {
                 Some(ins) => instructions.extend(ins),
-                None => instructions.push(Instruction::Nil)
+                None => instructions.push(Instruction::Nil),
             };
 
             Ok(instructions)
@@ -410,7 +407,11 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
         (keywords::LETREC, l) if l >= 2 => compile_let_exp(datums, LetExp::LetRec, tail),
         (keywords::LET_STAR, l) if l >= 2 => compile_let_exp(datums, LetExp::LetStar, tail),
         (keywords::DO, l) if l >= 2 => {
-            let variables = datums.pop_front().unwrap().list().ok_or(ParsingError::Illegal)?;
+            let variables = datums
+                .pop_front()
+                .unwrap()
+                .list()
+                .ok_or(ParsingError::Illegal)?;
 
             let (mut vars, inits, steps) = {
                 let mut vars = vec![];
@@ -438,8 +439,11 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                 (vars, inits, steps)
             };
 
-
-            let mut test_result = datums.pop_front().unwrap().list().ok_or(ParsingError::Illegal)?;
+            let mut test_result = datums
+                .pop_front()
+                .unwrap()
+                .list()
+                .ok_or(ParsingError::Illegal)?;
 
             check![test_result.len() >= 1, ParsingError::Illegal];
             let test = compile_expression_inner(test_result.pop_front().unwrap(), false)?;
@@ -454,19 +458,28 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
             instructions.extend(inits.compiled()?);
 
             for i in 0..vars.len() {
-                instructions.push(Instruction::DefineVar((&vars[vars.len() - i - 1])[..].into()));
+                instructions.push(Instruction::DefineVar(
+                    (&vars[vars.len() - i - 1])[..].into(),
+                ));
             }
 
             let test_len = test.len();
             instructions.extend(test);
 
-            let diff_to_sequence = commands.len() + 1 + vars.len() + steps.iter().fold(0, |acc, step| acc + step.as_ref().map(|s| s.len()).unwrap_or(0)) + 1;
+            let diff_to_sequence = commands.len() + 1 + vars.len()
+                + steps.iter().fold(0, |acc, step| {
+                    acc + step.as_ref().map(|s| s.len()).unwrap_or(0)
+                }) + 1;
 
             instructions.push(Instruction::BranchIf((diff_to_sequence) as isize + 1));
 
             instructions.extend(commands);
             instructions.push(Instruction::Pop);
-            for step in steps.into_iter().filter(|s| s.is_some()).map(|s| s.unwrap()) {
+            for step in steps
+                .into_iter()
+                .filter(|s| s.is_some())
+                .map(|s| s.unwrap())
+            {
                 instructions.extend(step);
             }
 
@@ -474,7 +487,9 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                 instructions.push(Instruction::DefineVar(var.into()));
             }
 
-            instructions.push(Instruction::Branch(-((diff_to_sequence + test_len) as isize)));
+            instructions.push(Instruction::Branch(
+                -((diff_to_sequence + test_len) as isize),
+            ));
 
             if sequence.is_empty() {
                 instructions.push(Instruction::Nil);
@@ -541,7 +556,9 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                 let test_len = test.len();
                 instructions.extend(test);
                 instructions.push(Instruction::Or);
-                instructions.push(Instruction::ROBranchIf((length - traveled - test_len) as isize - 1));
+                instructions.push(Instruction::ROBranchIf(
+                    (length - traveled - test_len) as isize - 1,
+                ));
                 traveled += test_len + 2;
             }
             // The last Branch is redundant
@@ -564,7 +581,8 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
             let instructions = compile_expression_inner(datums.pop_front().unwrap(), false)?;
             let (settled, value) = find_unused_vars(&instructions);
 
-            let (settled, value) : (ImmutableString, ImmutableString) = (settled.into(), value.into());
+            let (settled, value): (ImmutableString, ImmutableString) =
+                (settled.into(), value.into());
 
             // (let
             //      ((settled #f) (value #f))
@@ -577,7 +595,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                 Instruction::Boolean(false),
                 Instruction::DefineVar(settled.clone()),
                 Instruction::Boolean(false),
-                Instruction::DefineVar(value.clone())
+                Instruction::DefineVar(value.clone()),
             ];
 
             let jump_to_end = instructions.len() + 6;
@@ -595,17 +613,16 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                 Instruction::Boolean(true),
                 Instruction::SetVar(settled.clone()),
                 Instruction::LoadVar(value),
-                Instruction::Ret
+                Instruction::Ret,
             ]);
 
             compiled.push(Instruction::Promise(Rc::new(body)));
             compiled.push(Instruction::PopEnv);
             Ok(compiled)
-        },
+        }
         _ => Err(ParsingError::Illegal),
     }
 }
-
 
 fn compile_quotation(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
     let instructions = match d {
@@ -664,7 +681,7 @@ fn compile_quotation(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
 //
 fn compile_else_clause(
     datums: &mut VecDeque<Datum>,
-    tail: bool
+    tail: bool,
 ) -> Result<Option<(Vec<Instruction>)>, ParsingError> {
     let mut else_clause = match datums.back().cloned() {
         Some(Datum::List(l)) => if l.is_empty() {
@@ -700,7 +717,7 @@ fn compile_let_exp(
     let variable = match let_type {
         LetExp::NamedLet if datums.len() >= 3 => datums.pop_front().unwrap().symbol(),
         LetExp::NamedLet => return Err(ParsingError::Illegal),
-        _ => None
+        _ => None,
     };
 
     // (let fn ((x 'xinit) ...) <body>)
@@ -774,7 +791,7 @@ fn compile_let_exp(
 
             let variable = variable.unwrap();
             datums = named_let_body(variable, bindings, datums);
-        },
+        }
     }
 
     let body = compile_body(datums, tail)?;
@@ -793,7 +810,11 @@ fn compile_let_exp(
 
 // (let fn ((x 'xinit) ...) <body>) is equivalent to:
 // (let ((x 'xinit) ...) (letrec ((fn (lambda (x ...) <body>))) (fn x ...)))
-fn named_let_body(variable: String, bindings: VecDeque<String>, body: VecDeque<Datum>) -> VecDeque<Datum> {
+fn named_let_body(
+    variable: String,
+    bindings: VecDeque<String>,
+    body: VecDeque<Datum>,
+) -> VecDeque<Datum> {
     let call = {
         let mut vec = VecDeque::new();
         vec.push_back(Datum::Symbol(variable.clone()));
@@ -803,7 +824,9 @@ fn named_let_body(variable: String, bindings: VecDeque<String>, body: VecDeque<D
     let lambda = {
         let mut vec = VecDeque::new();
         vec.push_back(Datum::Symbol(keywords::LAMBDA.to_owned()));
-        vec.push_back(Datum::List(bindings.into_iter().map(Datum::Symbol).collect()));
+        vec.push_back(Datum::List(
+            bindings.into_iter().map(Datum::Symbol).collect(),
+        ));
         vec.extend(body);
         Datum::List(vec)
     };
@@ -884,7 +907,10 @@ fn compile_body(mut datums: VecDeque<Datum>, tail: bool) -> Result<Vec<Instructi
     Ok(instructions)
 }
 
-fn compile_sequence(mut datums: VecDeque<Datum>, tail: bool) -> Result<Vec<Instruction>, ParsingError> {
+fn compile_sequence(
+    mut datums: VecDeque<Datum>,
+    tail: bool,
+) -> Result<Vec<Instruction>, ParsingError> {
     if datums.is_empty() {
         return Ok(vec![]);
     }
@@ -1008,7 +1034,6 @@ fn parse_quasiquotation(_datum: Datum) -> Result<Vec<Instruction>, ParsingError>
     panic!("unimplemented: parse quasiquotation expressions");
 }
 
-
 //
 // Helpers
 //
@@ -1029,7 +1054,6 @@ fn symbol_type(d: &Datum) -> Symbol {
         _ => Symbol::None,
     }
 }
-
 
 fn keyword_name(d: Datum) -> Option<String> {
     match (symbol_type(&d), d) {
@@ -1075,14 +1099,16 @@ fn find_unused_vars(instructions: &[Instruction]) -> (String, String) {
         let mut overlap = false;
         for instruction in instructions {
             match *instruction {
-                Instruction::LoadVar(ref v) | Instruction::DefineVar(ref v) | Instruction::SetVar(ref v) => {
-                    let vstring : &String = &*v;
+                Instruction::LoadVar(ref v)
+                | Instruction::DefineVar(ref v)
+                | Instruction::SetVar(ref v) => {
+                    let vstring: &String = &*v;
                     if vstring == &vars.0 || vstring == &vars.1 {
                         overlap = true;
                         break;
                     }
-                },
-                _ => continue
+                }
+                _ => continue,
             }
         }
 

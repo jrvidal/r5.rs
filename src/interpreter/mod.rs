@@ -1,4 +1,3 @@
-
 use lexer::Tokens;
 use reader::parse_datum;
 use compiler::compile_expression;
@@ -31,8 +30,7 @@ pub fn interpret(
         };
 
         let bytecode = compile_expression(datum).ok_or(InterpreterError::Compiler)?;
-        value = Some(exec(&bytecode, environment.clone())
-            .map_err(|e| InterpreterError::Exec(e))?);
+        value = Some(exec(&bytecode, environment.clone()).map_err(|e| InterpreterError::Exec(e))?);
     }
 
     value.ok_or(InterpreterError::EOF)

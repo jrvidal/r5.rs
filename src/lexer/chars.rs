@@ -39,10 +39,12 @@ impl<I: Iterator<Item = char>> Iterator for Chars<I> {
 
     fn next(&mut self) -> Option<char> {
         self.fill_buf();
-        self.buf.pop_front().map(|c| if self.case_sensitive {
-            c
-        } else {
-            c.to_ascii_lowercase()
+        self.buf.pop_front().map(|c| {
+            if self.case_sensitive {
+                c
+            } else {
+                c.to_ascii_lowercase()
+            }
         })
     }
 }
@@ -78,14 +80,13 @@ impl<I: Iterator<Item = char>> LexerIterator for Chars<I> {
 
     fn peek(&mut self, index: usize) -> Option<char> {
         self.fill_buf();
-        self.buf
-            .get(index)
-            .cloned()
-            .map(|c| if self.case_sensitive {
+        self.buf.get(index).cloned().map(|c| {
+            if self.case_sensitive {
                 c
             } else {
                 c.to_ascii_lowercase()
-            })
+            }
+        })
     }
 }
 

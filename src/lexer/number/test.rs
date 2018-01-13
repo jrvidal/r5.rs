@@ -134,7 +134,6 @@ fn parse_real_with_integer_error() {
     assert!(t.is_err());
 }
 
-
 macro_rules! assert_frac {
     ($t:expr, [$fuzzy:expr, $digits:expr], [$fuzzy_d:expr, $digits_d:expr]) => ({
         assert!($t.is_frac());
@@ -156,7 +155,6 @@ fn parse_real_with_fraction() {
     let n = "12#/2";
     let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
     assert_frac!(t, [1, "12"], [0, "2"]);
-
 
     let n = "12#/23#";
     let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
@@ -199,7 +197,6 @@ fn parse_real_with_decimal() {
     let n = "1.2";
     let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();
     assert_dec!(t, 0, "12", 1);
-
 
     let n = "0.12";
     let t = parse_real(&mut Chars::from_str(n), None).ok().unwrap();

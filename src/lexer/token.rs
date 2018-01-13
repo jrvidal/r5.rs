@@ -81,7 +81,6 @@ impl<I: Iterator<Item = char>> Iterator for Tokens<I> {
     }
 }
 
-
 impl<I: Iterator<Item = char>> Tokens<I> {
     pub fn new(it: I) -> Tokens<I> {
         Tokens { it: it.into() }
@@ -99,7 +98,6 @@ enum ParsingState {
 
 const CHAR_NAME_SPACE: &[char] = &['s', 'p', 'a', 'c', 'e'];
 const CHAR_NAME_NEWLINE: &[char] = &['n', 'e', 'w', 'l', 'i', 'n', 'e'];
-
 
 pub fn next_token<T: LexerIterator>(stream: &mut T) -> Result<Option<Token>, TokenizerError> {
     let mut state = ParsingState::Normal;
@@ -122,16 +120,16 @@ pub fn next_token<T: LexerIterator>(stream: &mut T) -> Result<Option<Token>, Tok
                 (Some('#'), Some('(')) => ret_val!(Token::OpenVector, stream, 2),
                 (Some('#'), Some('\\')) => { /*char, delegate to main loop*/ }
 
-                (Some('#'), Some('e')) |
-                (Some('#'), Some('i')) |
-                (Some('#'), Some('b')) |
-                (Some('#'), Some('o')) |
-                (Some('#'), Some('d')) |
-                (Some('#'), Some('x')) |
-                (Some('0'...'9'), _) |
-                (Some('+'), Some('0'...'9')) |
-                (Some('-'), Some('0'...'9')) |
-                (Some('.'), Some('0'...'9')) => match NumberToken::parse(stream) {
+                (Some('#'), Some('e'))
+                | (Some('#'), Some('i'))
+                | (Some('#'), Some('b'))
+                | (Some('#'), Some('o'))
+                | (Some('#'), Some('d'))
+                | (Some('#'), Some('x'))
+                | (Some('0'...'9'), _)
+                | (Some('+'), Some('0'...'9'))
+                | (Some('-'), Some('0'...'9'))
+                | (Some('.'), Some('0'...'9')) => match NumberToken::parse(stream) {
                     Ok(nt) => ret_val!(Token::Number(nt)),
                     Err(error) => {
                         return Err(TokenizerError { error });

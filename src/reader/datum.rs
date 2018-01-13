@@ -87,7 +87,7 @@ pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, Reader
 
             ok_some!(Datum::Vector(datums))
         }
-        _ => Err(ReaderError::UnexpectedToken)
+        _ => Err(ReaderError::UnexpectedToken),
     }
 }
 
@@ -120,7 +120,6 @@ fn parse_list_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, Reade
             _ if last.is_some() && is_pair => return Err(ReaderError::UnexpectedListToken),
             _ => {}
         }
-
 
         match parse_datum(stream) {
             Ok(Some(d)) => if is_pair {
@@ -255,26 +254,15 @@ mod test {
         assert_eq!(parse_datum(&mut stream), Err(UnexpectedEOF));
     }
 
-
     #[test]
     fn empty_head_list_test() {
-        let mut stream = tokens(&[
-            Token::Open,
-            Token::Dot,
-            Token::Character('a'),
-            Token::Close,
-        ]);
+        let mut stream = tokens(&[Token::Open, Token::Dot, Token::Character('a'), Token::Close]);
         assert_eq!(parse_datum(&mut stream), Err(UnexpectedListToken));
     }
 
     #[test]
     fn empty_tail_list_test() {
-        let mut stream = tokens(&[
-            Token::Open,
-            Token::Character('a'),
-            Token::Dot,
-            Token::Close,
-        ]);
+        let mut stream = tokens(&[Token::Open, Token::Character('a'), Token::Dot, Token::Close]);
         assert_eq!(parse_datum(&mut stream), Err(UnexpectedEOF));
     }
 

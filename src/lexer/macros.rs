@@ -1,4 +1,3 @@
-
 macro_rules! ret_err {
     ($err:ident) => ({
         return Err(TokenizerError {error: TokenErrorClass::$err})
