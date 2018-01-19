@@ -234,6 +234,14 @@ fn stdlib_eqv_lists() {
 }
 
 #[test]
+fn stdlib_eqv_strings() {
+    assert_eq![
+        with_std!["(let ((x \"a\")) (eqv? x x))"],
+        Ok(Value::Boolean(true))
+    ];
+}
+
+#[test]
 fn stdlib_eqv_empty_lists() {
     assert_eq![with_std!["(eqv? '() '())"], Ok(Value::Boolean(true))];
 }
