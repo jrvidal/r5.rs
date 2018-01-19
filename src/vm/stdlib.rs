@@ -3,7 +3,7 @@ use super::{shared, Branch, DeepEqual, ExecutionError, Pair, Value, VmState};
 type NatFn = fn(&mut VmState, CallInfo, &Option<Branch>) -> Result<(), ExecutionError>;
 type CallInfo = (usize, bool);
 
-pub(super) const STDLIB: [(&str, NatFn, CallInfo); 22] = [
+pub(super) const STDLIB: [(&str, NatFn, CallInfo); 25] = [
     ("list", list, (0, true)),
     ("cons", cons, (2, false)),
     ("apply", apply, (2, false)),
@@ -16,6 +16,9 @@ pub(super) const STDLIB: [(&str, NatFn, CallInfo); 22] = [
     ("*", multiplication, (0, true)),
     ("-", substraction, (0, true)),
     ("<=", leq_than, (0, true)),
+    ("<", less_than, (0, true)),
+    (">", greater_than, (0, true)),
+    (">=", geq_than, (0, true)),
     ("null?", is_null, (1, false)),
     ("number?", is_number, (1, false)),
     ("list?", is_list, (1, false)),
@@ -105,9 +108,7 @@ fn force(
     call_info: (usize, bool),
     branch: &Option<Branch>,
 ) -> Result<(), ExecutionError> {
-    if let Value::Promise { .. } = *vm.stack.get(0).unwrap() {
-        // Pass
-    } else {
+    if !vm.stack.get(0).unwrap().is_promise() {
         return Ok(());
     }
 
@@ -248,43 +249,53 @@ fn substraction(
     Ok(())
 }
 
-fn leq_than(
-    vm: &mut VmState,
-    (n_of_args, _): (usize, bool),
-    _: &Option<Branch>,
-) -> Result<(), ExecutionError> {
-    if n_of_args == 0 {
-        vm.stack.push(Value::Boolean(true));
-        return Ok(());
-    }
+macro_rules! comparator_impl {
+    ($name:ident, $method:path) => (
+        fn $name(
+            vm: &mut VmState,
+            (n_of_args, _): (usize, bool),
+            _: &Option<Branch>,
+        ) -> Result<(), ExecutionError> {
+            if n_of_args == 0 {
+                vm.stack.push(Value::Boolean(true));
+                return Ok(());
+            }
 
-    let mut acc = true;
-    let mut numbers = vm.pop_as_vec(n_of_args).unwrap();
-    let mut last = numbers.pop().unwrap();
+            let mut acc = true;
+            let mut numbers = vm.pop_as_vec(n_of_args).unwrap();
+            let mut last = numbers.pop().unwrap();
 
-    if !last.is_number() {
-        return Err(ExecutionError::BadArgType);
-    }
+            if !last.is_number() {
+                return Err(ExecutionError::BadArgType);
+            }
 
-    while let Some(n) = numbers.pop() {
-        acc = acc && match (last, &n) {
-            (Value::Integer(n), &Value::Integer(m)) => n <= m,
-            (Value::Integer(n), &Value::Float(f)) => (n as f32) <= f,
-            (Value::Float(f), &Value::Integer(n)) => f <= (n as f32),
-            (Value::Float(f), &Value::Float(g)) => f <= g,
-            _ => return Err(ExecutionError::BadArgType),
-        };
+            while let Some(n) = numbers.pop() {
+                acc = acc && match (last, &n) {
+                    (Value::Integer(n), &Value::Integer(m)) => $method(&n, &m),
+                    (Value::Integer(n), &Value::Float(f)) => $method(&(n as f32), &f),
+                    (Value::Float(f), &Value::Integer(n)) => $method(&f, &(n as f32)),
+                    (Value::Float(f), &Value::Float(g)) => $method(&f, &g),
+                    _ => return Err(ExecutionError::BadArgType),
+                };
 
-        last = n;
+                last = n;
 
-        if !acc {
-            break;
+                if !acc {
+                    break;
+                }
+            }
+
+            vm.stack.push(Value::Boolean(acc));
+            Ok(())
         }
-    }
-
-    vm.stack.push(Value::Boolean(acc));
-    Ok(())
+    )
 }
+
+use std::cmp::PartialOrd;
+comparator_impl!(less_than, PartialOrd::lt);
+comparator_impl!(leq_than, PartialOrd::le);
+comparator_impl!(greater_than, PartialOrd::gt);
+comparator_impl!(geq_than, PartialOrd::ge);
 
 macro_rules! simple_type {
     ($name:ident) => (

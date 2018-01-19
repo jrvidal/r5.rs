@@ -224,6 +224,7 @@ impl Value {
     simple_type!(is_null, Value::EmptyList);
     simple_type!(is_pair, Value::Pair(..));
     simple_type!(is_number, Value::Integer(_), Value::Float(_));
+    simple_type!(is_promise, Value::Promise{..});
 
     pub fn list_len(&self) -> Option<usize> {
         match *self {
