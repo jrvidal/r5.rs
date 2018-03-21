@@ -4,14 +4,18 @@ type RunResult = Result<(), ExecutionError>;
 type NatFn = fn(&mut VmState, CallInfo, &Option<Branch>) -> RunResult;
 type CallInfo = (usize, bool);
 
-pub(super) const STDLIB: [(&str, NatFn, CallInfo); 25] = [
+pub(super) const STDLIB: [(&str, NatFn, CallInfo); 28] = [
     ("list", list, (0, true)),
     ("cons", cons, (2, false)),
     ("apply", apply, (2, false)),
     ("car", car, (1, false)),
     ("cdr", cdr, (1, false)),
+    ("set-car!", set_car, (2, false)),
+    ("set-cdr!", set_cdr, (2, false)),
+    ("length", length, (1, false)),
     ("force", force, (1, false)),
     ("eqv?", are_eqv, (2, false)),
+    // TODO ("eq?", are_eq, (2, false)),
     ("equal?", are_equal, (2, false)),
     ("+", addition, (0, true)),
     ("*", multiplication, (0, true)),
@@ -46,6 +50,53 @@ fn cons(vm: &mut VmState, _: (usize, bool), _: &Option<Branch>) -> RunResult {
     let cdr = vm.stack.pop().expect("bad cdr");
     let car = vm.stack.pop().expect("bad car");
     vm.stack.push(Value::Pair(shared(Pair(car, cdr))));
+    Ok(())
+}
+
+macro_rules! set_pair {
+    ($name:ident, $borrowed:ident, $part:expr) => (
+        fn $name(vm: &mut VmState, _: (usize, bool), _: &Option<Branch>) -> RunResult {
+            let car = vm.stack.pop().unwrap();
+            let pair = if let Value::Pair(pair) = vm.stack.pop().unwrap() {
+                pair
+            } else {
+                return Err(ExecutionError::BadArgType);
+            };
+
+            let mut $borrowed = pair.borrow_mut();
+            $part = car;
+
+            vm.stack.push(Value::Nil);
+            Ok(())
+        }
+    )
+}
+
+set_pair!(set_car, borrowed, borrowed.0);
+set_pair!(set_cdr, borrowed, borrowed.1);
+
+fn length(vm: &mut VmState, _: (usize, bool), _: &Option<Branch>) -> RunResult {
+    let mut n = 0;
+
+    let mut value = vm.stack.pop().unwrap();
+
+    loop {
+        if value.is_null() {
+            break;
+        }
+
+        let next = if let Value::Pair(ref x) = value {
+            x.borrow().1.clone()
+        } else {
+            return Err(ExecutionError::BadArgType);
+        };
+
+        n += 1;
+
+        value = next;
+    }
+
+    vm.stack.push(Value::Integer(n));
     Ok(())
 }
 
