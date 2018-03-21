@@ -1,6 +1,7 @@
 use super::{shared, Branch, DeepEqual, ExecutionError, Pair, Value, VmState};
 
-type NatFn = fn(&mut VmState, CallInfo, &Option<Branch>) -> Result<(), ExecutionError>;
+type RunResult = Result<(), ExecutionError>;
+type NatFn = fn(&mut VmState, CallInfo, &Option<Branch>) -> RunResult;
 type CallInfo = (usize, bool);
 
 pub(super) const STDLIB: [(&str, NatFn, CallInfo); 25] = [
@@ -35,28 +36,20 @@ pub(super) const STDLIB: [(&str, NatFn, CallInfo); 25] = [
 // * The arity has been checked to be correct.
 // * The arguments are in inverse order in the stack: arg_n, ... arg_1
 
-fn list(
-    vm: &mut VmState,
-    call_info: (usize, bool),
-    _: &Option<Branch>,
-) -> Result<(), ExecutionError> {
+fn list(vm: &mut VmState, call_info: (usize, bool), _: &Option<Branch>) -> RunResult {
     let list = vm.pop_as_list(call_info.0, false).expect("Bad argc");
     vm.stack.push(list);
     Ok(())
 }
 
-fn cons(vm: &mut VmState, _: (usize, bool), _: &Option<Branch>) -> Result<(), ExecutionError> {
+fn cons(vm: &mut VmState, _: (usize, bool), _: &Option<Branch>) -> RunResult {
     let cdr = vm.stack.pop().expect("bad cdr");
     let car = vm.stack.pop().expect("bad car");
     vm.stack.push(Value::Pair(shared(Pair(car, cdr))));
     Ok(())
 }
 
-fn apply(
-    vm: &mut VmState,
-    call_info: (usize, bool),
-    branch: &Option<Branch>,
-) -> Result<(), ExecutionError> {
+fn apply(vm: &mut VmState, call_info: (usize, bool), branch: &Option<Branch>) -> RunResult {
     let arg_list = vm.stack.pop().unwrap();
     if !arg_list.is_list() {
         return Err(ExecutionError::BadArgType);
@@ -75,11 +68,7 @@ fn apply(
     vm.call(call_info.1, args_passed, branch)
 }
 
-fn car(
-    vm: &mut VmState,
-    _call_info: (usize, bool),
-    _: &Option<Branch>,
-) -> Result<(), ExecutionError> {
+fn car(vm: &mut VmState, _call_info: (usize, bool), _: &Option<Branch>) -> RunResult {
     let pair = vm.stack
         .pop()
         .unwrap()
@@ -89,11 +78,7 @@ fn car(
     Ok(())
 }
 
-fn cdr(
-    vm: &mut VmState,
-    _call_info: (usize, bool),
-    _: &Option<Branch>,
-) -> Result<(), ExecutionError> {
+fn cdr(vm: &mut VmState, _call_info: (usize, bool), _: &Option<Branch>) -> RunResult {
     let pair = vm.stack
         .pop()
         .unwrap()
@@ -103,11 +88,7 @@ fn cdr(
     Ok(())
 }
 
-fn force(
-    vm: &mut VmState,
-    call_info: (usize, bool),
-    branch: &Option<Branch>,
-) -> Result<(), ExecutionError> {
+fn force(vm: &mut VmState, call_info: (usize, bool), branch: &Option<Branch>) -> RunResult {
     if !vm.stack.get(0).unwrap().is_promise() {
         return Ok(());
     }
@@ -124,11 +105,7 @@ fn force(
     Ok(())
 }
 
-fn are_eqv(
-    vm: &mut VmState,
-    _call_info: (usize, bool),
-    _: &Option<Branch>,
-) -> Result<(), ExecutionError> {
+fn are_eqv(vm: &mut VmState, _call_info: (usize, bool), _: &Option<Branch>) -> RunResult {
     let x = vm.stack.pop().unwrap();
     let y = vm.stack.pop().unwrap();
 
@@ -137,11 +114,7 @@ fn are_eqv(
     Ok(())
 }
 
-fn are_equal(
-    vm: &mut VmState,
-    _call_info: (usize, bool),
-    _: &Option<Branch>,
-) -> Result<(), ExecutionError> {
+fn are_equal(vm: &mut VmState, _call_info: (usize, bool), _: &Option<Branch>) -> RunResult {
     let x = vm.stack.pop().unwrap();
     let y = vm.stack.pop().unwrap();
 
@@ -150,11 +123,7 @@ fn are_equal(
     Ok(())
 }
 
-fn addition(
-    vm: &mut VmState,
-    (n_of_args, _): (usize, bool),
-    _: &Option<Branch>,
-) -> Result<(), ExecutionError> {
+fn addition(vm: &mut VmState, (n_of_args, _): (usize, bool), _: &Option<Branch>) -> RunResult {
     if n_of_args == 0 {
         vm.stack.push(Value::Integer(0));
         return Ok(());
@@ -186,7 +155,7 @@ fn multiplication(
     vm: &mut VmState,
     (n_of_args, _): (usize, bool),
     _: &Option<Branch>,
-) -> Result<(), ExecutionError> {
+) -> RunResult {
     if n_of_args == 0 {
         vm.stack.push(Value::Integer(1));
         return Ok(());
@@ -214,11 +183,7 @@ fn multiplication(
     Ok(())
 }
 
-fn substraction(
-    vm: &mut VmState,
-    (n_of_args, _): (usize, bool),
-    _: &Option<Branch>,
-) -> Result<(), ExecutionError> {
+fn substraction(vm: &mut VmState, (n_of_args, _): (usize, bool), _: &Option<Branch>) -> RunResult {
     if n_of_args == 0 {
         vm.stack.push(Value::Integer(0));
         return Ok(());
@@ -255,7 +220,7 @@ macro_rules! comparator_impl {
             vm: &mut VmState,
             (n_of_args, _): (usize, bool),
             _: &Option<Branch>,
-        ) -> Result<(), ExecutionError> {
+        ) -> RunResult {
             if n_of_args == 0 {
                 vm.stack.push(Value::Boolean(true));
                 return Ok(());
@@ -301,7 +266,7 @@ macro_rules! simple_type {
     ($name:ident) => (
         fn $name(
             vm: &mut VmState, _: (usize, bool), _: &Option<Branch>
-        ) -> Result<(), ExecutionError> {
+        ) -> RunResult {
             let value = vm.stack.pop().unwrap();
             vm.stack.push(Value::Boolean(Value::$name(&value)));
             Ok(())
