@@ -39,7 +39,7 @@ impl From<NumberToken> for Result<Num, InvalidNumber> {
 
         match number {
             ComplexLiteral::Real(sign, real) => {
-                let num = real.to_num(radix, exactness)?;
+                let num = real.into_num(radix, exactness)?;
 
                 if sign == Some(NumSign::Minus) {
                     Ok(-num)
@@ -116,7 +116,7 @@ impl RealLiteral {
         Ok(ret)
     }
 
-    fn to_num(self, radix: Radix, exactness: Exactness) -> Result<Num, InvalidNumber> {
+    fn into_num(self, radix: Radix, exactness: Exactness) -> Result<Num, InvalidNumber> {
         match self {
             RealLiteral::Integer { digits, pounds } => {
                 RealLiteral::int_to_num(digits, pounds, radix, exactness)

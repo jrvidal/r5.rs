@@ -98,25 +98,25 @@ fn parse_list_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, Reade
     let mut is_pair = false;
 
     loop {
-        match stream.get(0).ok_or(ReaderError::UnexpectedEOF)? {
-            &Token::Close if !is_pair && last.is_none() => {
+        match *stream.get(0).ok_or(ReaderError::UnexpectedEOF)? {
+            Token::Close if !is_pair && last.is_none() => {
                 stream.pop_front();
                 ret_val!(Datum::List(datums));
             }
-            &Token::Close if is_pair && !datums.is_empty() && last.is_some() => {
+            Token::Close if is_pair && !datums.is_empty() && last.is_some() => {
                 stream.pop_front();
                 ret_val!(Datum::Pair {
                     car: datums,
                     cdr: last.unwrap(),
                 });
             }
-            &Token::Dot if !is_pair => {
+            Token::Dot if !is_pair => {
                 is_pair = true;
                 stream.pop_front();
             }
             // Close and Dot are errors in any other circumstances
             // Also interrupted stream or any other token after finishing a pair
-            &Token::Close | &Token::Dot => return Err(ReaderError::UnexpectedListToken),
+            Token::Close | Token::Dot => return Err(ReaderError::UnexpectedListToken),
             _ if last.is_some() && is_pair => return Err(ReaderError::UnexpectedListToken),
             _ => {}
         }

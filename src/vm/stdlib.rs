@@ -109,9 +109,8 @@ fn apply(vm: &mut VmState, call_info: (usize, bool), branch: &Option<Branch>) ->
 
     let procedure = vm.stack.pop().unwrap();
 
-    match procedure {
-        Value::Procedure { .. } | Value::NativeProcedure { .. } => {}
-        _ => return Err(ExecutionError::NonCallable),
+    if !procedure.is_procedure() {
+        return Err(ExecutionError::NonCallable);
     }
 
     vm.push_list(arg_list);
@@ -151,7 +150,7 @@ fn force(vm: &mut VmState, call_info: (usize, bool), branch: &Option<Branch>) ->
         unreachable!();
     };
 
-    vm.non_native_call(call_info.1, environment, code, branch);
+    vm.non_native_call(call_info.1, &environment, code, branch);
 
     Ok(())
 }

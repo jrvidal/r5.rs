@@ -41,7 +41,7 @@ unsafe impl<V: Trace> Trace for Environment<V> {
         if let Some(ref env) = this.parent {
             mark(env);
         }
-        for (_, v) in &this.bindings {
+        for v in this.bindings.values() {
             mark(v);
         }
     });
@@ -84,9 +84,9 @@ impl<V: Trace + Clone> Environment<V> {
         self.bindings.insert(name, value);
     }
 
-    pub fn get(&self, name: ImmutableString) -> Option<V> {
-        if self.bindings.contains_key(&name) {
-            return self.bindings.get(&name).cloned();
+    pub fn get(&self, name: &ImmutableString) -> Option<V> {
+        if self.bindings.contains_key(name) {
+            return self.bindings.get(name).cloned();
         } else if self.parent.is_none() {
             return None;
         }
@@ -94,8 +94,8 @@ impl<V: Trace + Clone> Environment<V> {
         loop {
             environment = {
                 let borrowed = environment.borrow();
-                if borrowed.bindings.contains_key(&name) {
-                    return borrowed.bindings.get(&name).cloned();
+                if borrowed.bindings.contains_key(name) {
+                    return borrowed.bindings.get(name).cloned();
                 } else if borrowed.parent.is_none() {
                     return None;
                 }

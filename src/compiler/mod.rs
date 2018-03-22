@@ -83,7 +83,7 @@ macro_rules! check {
     )
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 enum LetExp {
     Let,
     LetRec,

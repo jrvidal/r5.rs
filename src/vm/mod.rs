@@ -109,7 +109,7 @@ impl VmState {
         }
 
         match fn_details {
-            Ok((code, environment)) => self.non_native_call(tail_call, environment, code, branch),
+            Ok((code, environment)) => self.non_native_call(tail_call, &environment, code, branch),
             Err(fun) => {
                 fun(self, (args_passed, tail_call), branch)?;
             }
@@ -120,7 +120,7 @@ impl VmState {
     fn non_native_call(
         &mut self,
         tail_call: bool,
-        environment: GcShared<Environment>,
+        environment: &GcShared<Environment>,
         code: Branch,
         branch: &Option<Branch>,
     ) {
@@ -327,10 +327,7 @@ pub fn exec(
                 vm.stack.push(Value::Nil);
             }
             Instruction::LoadVar(ref var_name) => {
-                let value = vm.environment
-                    .borrow()
-                    .get(var_name.clone())
-                    .ok_or(UnboundVar)?;
+                let value = vm.environment.borrow().get(var_name).ok_or(UnboundVar)?;
                 vm.stack.push(value);
             }
             Instruction::DefineVar(ref var_name) => {
