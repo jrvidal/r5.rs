@@ -193,10 +193,14 @@ impl Value {
             Value::String(ref s) => "\"".to_owned() + &escape(&*s.borrow()) + "\"",
             Value::Procedure { .. } | Value::NativeProcedure { .. } => "<procedure>".to_owned(),
             Value::Vector(ref vals) => {
-                vals.borrow()
+                if vals.borrow().is_empty() {
+                    return "#()".into();
+                }
+                let mut open = vals.borrow()
                     .iter()
-                    .fold("#(".into(), |acc: String, val| acc + &val.to_repl())
-                    + ")"
+                    .fold("#(".into(), |acc: String, val| acc + &val.to_repl() + " ");
+                let _ = open.pop();
+                open + ")"
             }
             ref pair @ Value::Pair { .. } => format!("({})", pair_to_repl(pair).1),
             Value::Promise { .. } => "<promise>".to_owned(),

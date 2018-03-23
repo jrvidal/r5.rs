@@ -659,9 +659,12 @@ fn compile_quotation(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
             let mut instructions = vec![];
             let n = datums.len();
 
-            for d in datums {
+            let mut iter = datums.into_iter();
+
+            while let Some(d) = iter.next_back() {
                 instructions.extend(compile_quotation(d)?);
             }
+
             instructions.push(Instruction::Vector(n));
             return Ok(instructions);
         }
