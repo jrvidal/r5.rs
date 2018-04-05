@@ -61,7 +61,7 @@ macro_rules! ok_some {
 // Strings
 //
 
-#[derive(Clone, Debug, PartialEq, Hash, Eq)]
+#[derive(Clone, Debug, PartialEq, Hash, Eq, Default)]
 pub struct ImmutableString(Rc<String>);
 
 impl Deref for ImmutableString {
@@ -102,7 +102,7 @@ impl<'a> borrow::Borrow<String> for &'a ImmutableString {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct CowString(Rc<String>);
 
 impl CowString {

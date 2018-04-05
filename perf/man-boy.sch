@@ -9,5 +9,5 @@
 (set! fn (lambda () (A 10 (lambda () 1) (lambda () -1) (lambda () -1) (lambda () 1) (lambda () 0))))
 
 (do ((i 0 (+ i 1)))
-  ((eqv? i 1000) 0)
+  ((eqv? i 100) 0)
   (fn))

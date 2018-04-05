@@ -1,5 +1,7 @@
 //! Convert expression(s) into bytecode
 
+use std::fmt::Debug;
+use std::fmt::{self, Display};
 use std::collections::VecDeque;
 use std::rc::Rc;
 
@@ -66,6 +68,68 @@ pub enum Instruction {
     Or,
     // Compare popping _only_ the first operand
     Eq,
+}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub struct InstructionRef(&'static str);
+
+impl<'a> From<&'a Instruction> for InstructionRef {
+    fn from(instruction: &Instruction) -> InstructionRef {
+        InstructionRef(instruction.variant_name())
+    }
+}
+
+impl Display for InstructionRef {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(self.0)
+    }
+}
+
+impl Debug for InstructionRef {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(self.0)
+    }
+}
+
+impl Instruction {
+    // TODO: this should be a custome derive or something
+    fn variant_name(&self)-> &'static str {
+        use self::Instruction::*;
+
+        match *self {
+            String(..) => "String",
+            Character(..) => "Character",
+            Boolean(..) => "Boolean",
+            Symbol(..) => "Symbol",
+            Integer(..) => "Integer",
+            Float(..) => "Float",
+            InvalidNumber => "InvalidNumber",
+            Nil => "Nil",
+            EmptyList => "EmpytList",
+            Call(..) => "Call",
+            Arity(..) => "Arity",
+            Ret => "Ret",
+            Branch(..) => "Branch",
+            BranchIf(..) => "BranchIf",
+            BranchUnless(..) => "BranchUnless",
+            ROBranchIf(..) => "ROBranchIf",
+            ROBranchUnless(..) => "ROBranchUnless",
+            Lambda { .. }  => "Lambda",
+            Promise { .. } => "Promise",
+            Pair => "Pair",
+            List(..) => "List",
+            Vector(..) => "Vector",
+            Pop => "Pop",
+            LoadVar(..) => "LoadVar",
+            DefineVar(..) => "DefineVar",
+            SetVar(..) => "SetVar",
+            NewEnv => "NewEnv",
+            PopEnv => "PopEnv",
+            And => "And",
+            Or => "Or",
+            Eq => "Eq",
+        }
+    }
 }
 
 type LambdaFormals = (Vec<String>, Option<String>);

@@ -5,7 +5,7 @@ use std::rc::Rc;
 use self::stack::Stack;
 use self::gc::shared;
 pub use self::value::{DeepEqual, NativeProcedure, Pair, Value};
-use compiler::Instruction;
+use compiler::{Instruction, InstructionRef};
 
 pub use self::gc::GcShared;
 pub use self::value::Environment;
@@ -192,9 +192,15 @@ impl VmState {
     }
 }
 
-pub fn exec(
+pub trait Profiler {
+    fn on_instruction_start(&mut self, instruction: InstructionRef);
+    fn on_instruction_end(&mut self, instruction: InstructionRef);
+}
+
+pub fn exec<P: Profiler>(
     bytecode: &[Instruction],
     environment: GcShared<Environment>,
+    profiler: &mut P
 ) -> Result<Value, ExecutionError> {
     use self::ExecutionError::*;
 
@@ -237,6 +243,8 @@ pub fn exec(
             vm.call_stack.len(),
             vm.stack
         );
+
+        profiler.on_instruction_start(instruction.into());
 
         match *instruction {
             Instruction::Character(c) => {
@@ -422,6 +430,7 @@ pub fn exec(
         }
 
         vm.pc = vm.next_pc.unwrap_or(vm.pc + 1);
+        profiler.on_instruction_end(instruction.into());
     }
 
     vm.stack.pop().ok_or(Internal("Empty stack"))

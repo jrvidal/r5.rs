@@ -17,12 +17,51 @@ fn main() {
 #[cfg(not(target_os = "emscripten"))]
 mod not_web {
 
+    use std::collections::HashMap;
+    use std::collections::hash_map::Entry;
+    use std::time::{Instant, Duration};
     use std::env::args;
     use env_logger;
     use r5rs::reader::*;
     use r5rs::lexer::*;
     use r5rs::vm::*;
     use r5rs::compiler::*;
+
+    struct TimeProfiler {
+        instructions: HashMap<InstructionRef, (usize, u64)>,
+        next: Option<InstructionRef>,
+        start: Instant
+    }
+
+    impl Profiler for TimeProfiler {
+        fn on_instruction_start(&mut self, instruction: InstructionRef) {
+            if self.next.is_some() {
+                unreachable!()
+            }
+            self.next = Some(instruction.clone());
+            self.start = Instant::now();
+        }
+        fn on_instruction_end(&mut self, instruction: InstructionRef) {
+            if self.next.is_none() || *self.next.as_ref().unwrap() != instruction {
+                unreachable!()
+            }
+            self.next = None;
+
+            let elapsed = self.start.elapsed();
+            let mut nanos = 0;
+            nanos += (elapsed.as_secs() as u64 * 1000000000);
+            nanos += elapsed.subsec_nanos() as u64;
+            match self.instructions.entry(instruction) {
+                Entry::Occupied(mut entry) => {
+                    entry.get_mut().0 += 1;
+                    entry.get_mut().1 += nanos;
+                },
+                Entry::Vacant(vacant) => {
+                    vacant.insert((1, nanos));
+                }
+            }
+        }
+    }
 
     use rustyline;
     use rustyline::error::ReadlineError;
@@ -100,6 +139,12 @@ mod not_web {
                 return;
             }
         };
+        
+        let mut profiler = TimeProfiler {
+            instructions: HashMap::new(),
+            next: None,
+            start: Instant::now()
+        };
 
         loop {
             let datum = match parse_datum(&mut tokens) {
@@ -122,11 +167,15 @@ mod not_web {
             };
 
             debug!("Code:\n{:?}", bytecode);
-            let should_continue = cb(exec(&bytecode, environment.clone()));
+            let should_continue = cb(exec(&bytecode, environment.clone(), &mut profiler));
 
             if !should_continue {
                 break;
             }
+        }
+
+        for (instruction, (count, nanos)) in profiler.instructions {
+            println!("{}: {} times, {} avg", instruction, count, (nanos as f64) / (count as f64));
         }
     }
 
