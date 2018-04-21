@@ -1,10 +1,10 @@
-use std::fmt::{Debug, Error as FmtError, Formatter};
-use std::collections::hash_map;
 use gc::{Finalize, Trace};
+use std::collections::hash_map;
+use std::fmt::{Debug, Error as FmtError, Formatter};
 
+use super::GcShared;
 use helpers::ImmutableString;
 use std::collections::HashMap;
-use super::GcShared;
 
 pub struct Environment<V: Trace + 'static> {
     pub(super) parent: Option<GcShared<Environment<V>>>,
@@ -49,15 +49,8 @@ unsafe impl<V: Trace> Trace for Environment<V> {
 
 impl<V: Trace + Clone> Environment<V> {
     pub fn set(&mut self, name: ImmutableString, value: V) {
-        use std::collections::hash_map::Entry;
-
-        if let Entry::Occupied(mut occ) = self.bindings.entry(name.clone()) {
-            *occ.get_mut() = value;
-            return;
-        }
-
-        if self.parent.is_none() {
-            self.bindings.insert(name, value);
+        if self.bindings.contains_key(&name) || self.parent.is_none() {
+            let _ = self.bindings.insert(name, value);
             return;
         }
 
@@ -66,15 +59,12 @@ impl<V: Trace + Clone> Environment<V> {
         loop {
             env = {
                 let mut envref = env.borrow_mut();
-                if let Entry::Occupied(mut occ) = envref.bindings.entry(name.clone()) {
-                    *occ.get_mut() = value;
+
+                if envref.bindings.contains_key(&name) || envref.parent.is_none() {
+                    let _ = envref.bindings.insert(name, value);
                     return;
                 }
 
-                if envref.parent.is_none() {
-                    envref.bindings.insert(name, value);
-                    return;
-                }
                 envref.parent.clone().unwrap()
             }
         }

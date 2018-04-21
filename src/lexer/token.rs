@@ -15,7 +15,6 @@ use super::chars::{Chars, LexerIterator};
     numbers, characters, and dot) must be terminated by a
     delimiter.
 */
-
 use super::number::NumberToken;
 
 /// A Scheme token

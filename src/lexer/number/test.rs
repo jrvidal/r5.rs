@@ -1,5 +1,5 @@
-use super::*;
 use super::super::chars::Chars;
+use super::*;
 use super::{parse_complex, parse_prefix, parse_real, parse_suffix};
 
 #[test]
@@ -20,11 +20,11 @@ fn prefix() {
 #[test]
 fn suffix() {
     macro_rules! assert_suffix {
-        ($t:ident, {$sign:expr, $marker:expr, $digits:expr}) => ({
+        ($t:ident, { $sign:expr, $marker:expr, $digits:expr }) => {{
             assert!($t.sign == $sign);
             assert!($t.marker == $marker);
             assert!($t.digits == $digits);
-        })
+        }};
     }
 
     let s = "e+1";
@@ -135,7 +135,7 @@ fn parse_real_with_integer_error() {
 }
 
 macro_rules! assert_frac {
-    ($t:expr, [$fuzzy:expr, $digits:expr], [$fuzzy_d:expr, $digits_d:expr]) => ({
+    ($t:expr,[$fuzzy:expr, $digits:expr],[$fuzzy_d:expr, $digits_d:expr]) => {{
         assert!($t.is_frac());
         assert!($t.fuzzy_digits() == $fuzzy);
         assert!($t.digits() == $digits);
@@ -143,7 +143,7 @@ macro_rules! assert_frac {
         assert!(denominator.is_int());
         assert!(denominator.fuzzy_digits() == $fuzzy_d);
         assert!(denominator.digits() == $digits_d);
-    })
+    }};
 }
 #[test]
 fn parse_real_with_fraction() {
@@ -175,21 +175,21 @@ fn parse_real_with_fraction_error() {
 }
 
 macro_rules! assert_dec {
-    ($t:expr, $fuzzy:expr, $digits:expr, $point:expr, BASIC) => ({
+    ($t:expr, $fuzzy:expr, $digits:expr, $point:expr,BASIC) => {{
         assert!($t.is_dec());
         assert!($t.fuzzy_digits() == $fuzzy);
         assert!($t.digits() == $digits);
         assert!($t.decimal_point() == $point);
-    });
-    ($t:expr, $fuzzy:expr, $digits:expr, $point:expr) => ({
+    }};
+    ($t:expr, $fuzzy:expr, $digits:expr, $point:expr) => {{
         assert_dec!($t, $fuzzy, $digits, $point, BASIC);
         assert!($t.decimal_suffix().is_none());
-    });
-    ($t:expr, $fuzzy:expr, $digits:expr, $point:expr, $marker:expr) => ({
+    }};
+    ($t:expr, $fuzzy:expr, $digits:expr, $point:expr, $marker:expr) => {{
         assert_dec!($t, $fuzzy, $digits, $point, BASIC);
         let marker = $t.decimal_suffix().as_ref().unwrap();
         assert!(&$marker == marker);
-    });
+    }};
 }
 
 #[test]

@@ -1,5 +1,5 @@
-use std::collections::VecDeque;
 use lexer::{NumberToken, Token};
+use std::collections::VecDeque;
 
 // A "datum" is basically a balanced token tree
 #[derive(Debug, Clone, PartialEq)]
@@ -195,11 +195,11 @@ impl fmt::Display for Datum {
 
 #[cfg(test)]
 mod test {
-    use std::collections::VecDeque;
-    use std::iter::FromIterator;
+    use self::ReaderError::*;
     use super::*;
     use lexer::Token;
-    use self::ReaderError::*;
+    use std::collections::VecDeque;
+    use std::iter::FromIterator;
 
     macro_rules! vec_deque {
         ($( $x:expr ),*) => ({

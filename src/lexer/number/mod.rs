@@ -1,8 +1,8 @@
-use std::i32;
-use std::str::FromStr;
-use std::ops::Neg;
-use super::chars::LexerIterator;
 use super::TokenErrorClass;
+use super::chars::LexerIterator;
+use std::i32;
+use std::ops::Neg;
+use std::str::FromStr;
 
 #[cfg(test)]
 mod test;
@@ -571,15 +571,15 @@ fn parse_real<T: LexerIterator>(
     }
 
     macro_rules! is_valid_digit {
-        ($digit:expr, $radix:expr, $decimal:expr) => ({
+        ($digit:expr, $radix:expr, $decimal:expr) => {{
             match $digit {
                 'a'...'f' if !$decimal && $radix == 16 => true,
                 '8' | '9' if $radix >= 10 => true,
                 '2'...'7' if $radix >= 8 => true,
                 '0' | '1' => true,
-                _ => false
+                _ => false,
             }
-        })
+        }};
     }
 
     let radix = r.unwrap_or(Radix::Decimal) as u8;

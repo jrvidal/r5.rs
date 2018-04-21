@@ -2,9 +2,9 @@ extern crate r5rs;
 
 use std::io::{stdin, stdout, Write};
 
-use r5rs::reader::*;
-use r5rs::lexer::*;
 use r5rs::compiler::*;
+use r5rs::lexer::*;
+use r5rs::reader::*;
 
 fn main() {
     let mut buffer = String::new();

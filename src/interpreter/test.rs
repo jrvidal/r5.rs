@@ -1,18 +1,24 @@
-use vm::{default_env, null_env, ExecutionError, Value};
 use super::{interpret, InterpreterError};
+use vm::{default_env, null_env, ExecutionError, Value};
 
 use self::ExecutionError::*;
 
 macro_rules! with_null {
-    ($code:expr) => (interpret($code, null_env()))
+    ($code:expr) => {
+        interpret($code, null_env())
+    };
 }
 
 macro_rules! with_std {
-    ($code:expr) => (interpret($code, default_env()))
+    ($code:expr) => {
+        interpret($code, default_env())
+    };
 }
 
 macro_rules! rt_err {
-    ($err:expr) => (Err(InterpreterError::Exec($err)))
+    ($err:expr) => {
+        Err(InterpreterError::Exec($err))
+    };
 }
 
 #[test]
@@ -50,7 +56,7 @@ fn stdlib_cons() {
 fn basic_call() {
     assert_eq![
         with_null!["((lambda () 'a))"],
-        Ok(Value::Symbol("a".into()))
+        Ok(Value::Symbol("a".into())),
     ];
 }
 
@@ -114,7 +120,7 @@ fn cond_empty() {
 fn cond_cascade() {
     assert_eq![
         with_null!["(cond (((lambda () #f)) 'a) (1 'b))"],
-        Ok(Value::Symbol("b".into()))
+        Ok(Value::Symbol("b".into())),
     ];
 }
 
@@ -127,7 +133,7 @@ fn cond_test_only() {
 fn cond_arrow() {
     assert_eq![
         with_std!["(cond ('(a b) => car))"],
-        Ok(Value::Symbol("a".into()))
+        Ok(Value::Symbol("a".into())),
     ];
 }
 
@@ -135,7 +141,7 @@ fn cond_arrow() {
 fn cond_arrow_false() {
     assert_eq![
         with_null!["(cond (#f => car) (#t 'z))"],
-        Ok(Value::Symbol("z".into()))
+        Ok(Value::Symbol("z".into())),
     ];
 }
 
@@ -143,7 +149,7 @@ fn cond_arrow_false() {
 fn delay_basic() {
     assert_eq![
         with_std!["(force (delay 'a))"],
-        Ok(Value::Symbol("a".into()))
+        Ok(Value::Symbol("a".into())),
     ];
 }
 
@@ -151,7 +157,7 @@ fn delay_basic() {
 fn delay_no_clobber() {
     assert_eq![
         with_std!["(force (let ((a 'one)) (delay a)))"],
-        Ok(Value::Symbol("one".into()))
+        Ok(Value::Symbol("one".into())),
     ];
 }
 
@@ -164,7 +170,7 @@ fn delay_is_delayed() {
 fn case_basic() {
     assert_eq![
         with_null!["(case 'a ((a) 'b))"],
-        Ok(Value::Symbol("b".into()))
+        Ok(Value::Symbol("b".into())),
     ];
 }
 
@@ -172,7 +178,7 @@ fn case_basic() {
 fn case_multiple() {
     assert_eq![
         with_null!["(case 'a ((b c) 'd) ((e a) 'x))"],
-        Ok(Value::Symbol("x".into()))
+        Ok(Value::Symbol("x".into())),
     ];
 }
 
@@ -180,7 +186,7 @@ fn case_multiple() {
 fn case_with_else() {
     assert_eq![
         with_null!["(case 'a ((b c) 'd) ((e z) 'x) (else 'w 'n))"],
-        Ok(Value::Symbol("n".into()))
+        Ok(Value::Symbol("n".into())),
     ];
 }
 
@@ -188,7 +194,7 @@ fn case_with_else() {
 fn case_nil() {
     assert_eq![
         with_null!["(case 'a ((b c) 'd) ((e z) 'x))"],
-        Ok(Value::Nil)
+        Ok(Value::Nil),
     ];
 }
 
@@ -196,7 +202,7 @@ fn case_nil() {
 fn let_basic() {
     assert_eq![
         with_null!["(let ((x 'a)) x)"],
-        Ok(Value::Symbol("a".into()))
+        Ok(Value::Symbol("a".into())),
     ];
 }
 
@@ -209,7 +215,7 @@ fn let_order() {
 fn let_star_order() {
     assert_eq![
         with_null!["(let* ((x 'a) (y x)) y)"],
-        Ok(Value::Symbol("a".into()))
+        Ok(Value::Symbol("a".into())),
     ];
 }
 
@@ -219,7 +225,7 @@ fn named_let_basic() {
         with_std![
             "(let fn ((x '(a b))) (if (null? (cdr x)) (car x) (fn (cdr x))))"
         ],
-        Ok(Value::Symbol("b".into()))
+        Ok(Value::Symbol("b".into())),
     ];
 }
 
@@ -237,7 +243,7 @@ fn stdlib_eqv_lists() {
 fn stdlib_eqv_strings() {
     assert_eq![
         with_std!["(let ((x \"a\")) (eqv? x x))"],
-        Ok(Value::Boolean(true))
+        Ok(Value::Boolean(true)),
     ];
 }
 
@@ -250,7 +256,7 @@ fn stdlib_eqv_empty_lists() {
 fn stdlib_eqv_lambdas() {
     assert_eq![
         with_std!["(eqv? (lambda () 'a) (lambda () 'a))"],
-        Ok(Value::Boolean(false))
+        Ok(Value::Boolean(false)),
     ];
 }
 
@@ -330,11 +336,11 @@ fn or_simple() {
 fn stdlib_equal_simple() {
     assert_eq![
         with_std!["(equal? '(a) (list 'a))"],
-        Ok(Value::Boolean(true))
+        Ok(Value::Boolean(true)),
     ];
     assert_eq![with_std!["(equal? '#(a) '#(a))"], Ok(Value::Boolean(true))];
     assert_eq![
         with_std!["(equal? \"foobar\" \"foobar\")"],
-        Ok(Value::Boolean(true))
+        Ok(Value::Boolean(true)),
     ];
 }

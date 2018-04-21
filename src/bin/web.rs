@@ -13,11 +13,11 @@ fn main() {
 
 #[cfg(target_os = "emscripten")]
 mod web {
-    use stdweb;
-    use r5rs::reader::*;
-    use r5rs::lexer::*;
-    use r5rs::vm::*;
     use r5rs::compiler::*;
+    use r5rs::lexer::*;
+    use r5rs::reader::*;
+    use r5rs::vm::*;
+    use stdweb;
 
     pub fn main() {
         stdweb::initialize();

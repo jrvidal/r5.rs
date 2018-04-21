@@ -1,7 +1,7 @@
 extern crate r5rs;
 
-use std::io::{stdin, stdout, Write};
 use r5rs::lexer::*;
+use std::io::{stdin, stdout, Write};
 
 fn main() {
     let mut buffer = String::new();

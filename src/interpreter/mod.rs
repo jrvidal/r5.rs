@@ -1,7 +1,7 @@
+use super::vm::{exec, Environment, ExecutionError, GcShared, Value};
+use compiler::compile_expression;
 use lexer::Tokens;
 use reader::parse_datum;
-use compiler::compile_expression;
-use super::vm::{exec, Environment, ExecutionError, GcShared, Value};
 
 #[derive(Debug, PartialEq)]
 pub enum InterpreterError {

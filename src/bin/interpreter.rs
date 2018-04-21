@@ -17,12 +17,12 @@ fn main() {
 #[cfg(not(target_os = "emscripten"))]
 mod not_web {
 
-    use std::env::args;
     use env_logger;
-    use r5rs::reader::*;
-    use r5rs::lexer::*;
-    use r5rs::vm::*;
     use r5rs::compiler::*;
+    use r5rs::lexer::*;
+    use r5rs::reader::*;
+    use r5rs::vm::*;
+    use std::env::{args, var};
 
     use rustyline;
     use rustyline::error::ReadlineError;
@@ -31,14 +31,15 @@ mod not_web {
         env_logger::init().expect("logger");
 
         let file = args().nth(1);
+        let with_profiler = var("PROFILE").map(|s| !s.is_empty()).unwrap_or(false);
 
         match file {
-            Some(file) => run_file(file),
+            Some(file) => run_file(file, with_profiler),
             None => run_repl(),
         }
     }
 
-    fn run_file(file_path: String) {
+    fn run_file(file_path: String, with_profiler: bool) {
         use std::fs::File;
         use std::io::Read;
 
@@ -50,15 +51,32 @@ mod not_web {
         };
         let environment = default_env();
         let mut last_value = None;
+        let mut time_profiler = None;
 
-        interpret(&source[..], &environment, |result| {
-            let should_continue = result.is_ok();
-            last_value = Some(result);
-            should_continue
-        });
+        {
+            let callback = |result: Result<_, _>| {
+                let should_continue = result.is_ok();
+                last_value = Some(result);
+                should_continue
+            };
+
+            if with_profiler {
+                let mut profiler = TimeProfiler::new();
+                interpret(&source[..], &environment, &mut profiler, callback);
+                time_profiler = Some(profiler);
+            } else {
+                interpret(&source[..], &environment, &mut NoopProfiler, callback);
+            }
+        }
 
         if let Some(Err(err)) = last_value {
             println!("{:?}", err);
+        }
+
+        let profile_report = time_profiler.map(|p| p.report()).unwrap_or(None);
+
+        if let Some(report) = profile_report {
+            eprintln!("{}", report);
         }
     }
 
@@ -76,22 +94,32 @@ mod not_web {
 
             rl.add_history_entry(&line);
 
-            interpret(&line[..], &environment, |result: Result<Value, _>| {
-                let need_more = result.is_ok();
-                match result {
-                    Ok(v) => println!("{}", v.to_repl()),
-                    Err(e) => {
-                        println!("Error: {:?}", e);
+            interpret(
+                &line[..],
+                &environment,
+                &mut NoopProfiler,
+                |result: Result<Value, _>| {
+                    let need_more = result.is_ok();
+                    match result {
+                        Ok(v) => println!("{}", v.to_repl()),
+                        Err(e) => {
+                            println!("Error: {:?}", e);
+                        }
                     }
-                }
-                need_more
-            })
+                    need_more
+                },
+            )
         }
     }
 
-    fn interpret<F>(source: &str, environment: &GcShared<Environment>, mut cb: F)
-    where
+    fn interpret<F, P>(
+        source: &str,
+        environment: &GcShared<Environment>,
+        profiler: &mut P,
+        mut cb: F,
+    ) where
         F: FnMut(Result<Value, ExecutionError>) -> bool,
+        P: Profiler,
     {
         let mut tokens = match Tokens::new(source.chars()).collect() {
             Ok(tokens) => tokens,
@@ -122,7 +150,7 @@ mod not_web {
             };
 
             debug!("Code:\n{:?}", bytecode);
-            let should_continue = cb(exec(&bytecode, environment.clone()));
+            let should_continue = cb(exec(&bytecode, environment.clone(), profiler));
 
             if !should_continue {
                 break;

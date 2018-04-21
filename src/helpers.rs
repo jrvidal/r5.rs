@@ -1,6 +1,6 @@
-use std::rc::Rc;
-use std::ops::Deref;
 use std::fmt::{Display, Error as FmtError, Formatter};
+use std::ops::Deref;
+use std::rc::Rc;
 
 pub trait Tuple2Helper<A, B, E> {
     fn result(self) -> Result<(A, B), E>;
@@ -46,22 +46,26 @@ impl ResultHelper for bool {
 // Macros
 //
 macro_rules! ret_val {
-    ($x:expr) => (return ok_some!($x));
-    ($x:expr, $s:ident, $n:expr) => ({
+    ($x:expr) => {
+        return ok_some!($x);
+    };
+    ($x:expr, $s:ident, $n:expr) => {{
         $s.advance($n);
-        return Ok(Some($x))
-    });
+        return Ok(Some($x));
+    }};
 }
 
 macro_rules! ok_some {
-    ($x:expr) => (Ok(Some($x)))
+    ($x:expr) => {
+        Ok(Some($x))
+    };
 }
 
 //
 // Strings
 //
 
-#[derive(Clone, Debug, PartialEq, Hash, Eq)]
+#[derive(Clone, Debug, PartialEq, Hash, Eq, Default)]
 pub struct ImmutableString(Rc<String>);
 
 impl Deref for ImmutableString {
@@ -102,7 +106,7 @@ impl<'a> borrow::Borrow<String> for &'a ImmutableString {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct CowString(Rc<String>);
 
 impl CowString {

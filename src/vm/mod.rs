@@ -1,25 +1,27 @@
 //! A virtual machine to interpret the ISA from `compiler`.
 
-use std::collections::HashMap;
-use std::rc::Rc;
-use self::stack::Stack;
 use self::gc::shared;
+use self::stack::Stack;
 pub use self::value::{DeepEqual, NativeProcedure, Pair, Value};
 use compiler::Instruction;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 pub use self::gc::GcShared;
+pub use self::profiler::*;
 pub use self::value::Environment;
 
 mod environment;
 mod gc;
+mod profiler;
 mod stack;
-mod value;
 mod stdlib;
+mod value;
 
 const MAX_CALL_STACK_DEPTH: usize = 1024;
 
 impl Newable for GcShared<Environment> {
-    fn new(&self) -> GcShared<Environment> {
+    fn new_child(&self) -> GcShared<Environment> {
         shared(Environment {
             parent: Some(self.clone()),
             bindings: HashMap::new(),
@@ -35,7 +37,7 @@ pub fn null_env() -> GcShared<Environment> {
 }
 
 trait Newable {
-    fn new(&self) -> Self;
+    fn new_child(&self) -> Self;
 }
 
 #[derive(Debug, PartialEq)]
@@ -125,7 +127,7 @@ impl VmState {
         branch: &Option<Branch>,
     ) {
         use std::mem;
-        let old_environment = mem::replace(&mut self.environment, environment.new());
+        let old_environment = mem::replace(&mut self.environment, environment.new_child());
 
         if !tail_call {
             let return_record = ReturnRecord {
@@ -192,9 +194,10 @@ impl VmState {
     }
 }
 
-pub fn exec(
+pub fn exec<P: Profiler>(
     bytecode: &[Instruction],
     environment: GcShared<Environment>,
+    profiler: &mut P,
 ) -> Result<Value, ExecutionError> {
     use self::ExecutionError::*;
 
@@ -237,6 +240,8 @@ pub fn exec(
             vm.call_stack.len(),
             vm.stack
         );
+
+        profiler.on_instruction_start(instruction.into());
 
         match *instruction {
             Instruction::Character(c) => {
@@ -394,7 +399,7 @@ pub fn exec(
                 vm.stack.pop();
             }
             Instruction::NewEnv => {
-                vm.environment = vm.environment.new();
+                vm.environment = vm.environment.new_child();
             }
             Instruction::PopEnv => {
                 let parent = vm.environment.borrow().parent.as_ref().unwrap().clone();
@@ -422,6 +427,7 @@ pub fn exec(
         }
 
         vm.pc = vm.next_pc.unwrap_or(vm.pc + 1);
+        profiler.on_instruction_end(instruction.into());
     }
 
     vm.stack.pop().ok_or(Internal("Empty stack"))

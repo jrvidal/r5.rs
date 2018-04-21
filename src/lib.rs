@@ -8,9 +8,9 @@ extern crate log;
 #[macro_use]
 mod helpers;
 
-pub mod lexer;
-pub mod reader;
 pub mod compiler;
-pub mod vm;
 #[cfg(test)]
 mod interpreter;
+pub mod lexer;
+pub mod reader;
+pub mod vm;

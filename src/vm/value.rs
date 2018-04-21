@@ -1,8 +1,8 @@
+use super::environment::Environment as GenericEnvironment;
+use super::gc::GcShared;
+use super::{Branch, ExecutionError, VmState};
 use gc::{Finalize, Trace};
 use helpers::ImmutableString;
-use super::gc::GcShared;
-use super::environment::Environment as GenericEnvironment;
-use super::{Branch, ExecutionError, VmState};
 
 pub type Environment = GenericEnvironment<Value>;
 
@@ -48,8 +48,8 @@ unsafe impl<T: Trace> Trace for Pair<T> {
 // without looking the contents of reference types
 impl PartialEq<Value> for Value {
     fn eq(&self, other: &Value) -> bool {
-        use self::Value::*;
         use self::NativeProcedure;
+        use self::Value::*;
 
         match (self, other) {
             (&Nil, &Nil) | (&EmptyList, &EmptyList) => true,

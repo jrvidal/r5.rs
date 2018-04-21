@@ -1,12 +1,14 @@
 //! Convert expression(s) into bytecode
 
 use std::collections::VecDeque;
+use std::fmt::Debug;
+use std::fmt::{self, Display};
 use std::rc::Rc;
 
-use lexer::Num;
-use reader::{AbbreviationKind, Datum};
 use self::keywords::is_syntactic_keyword;
 use helpers::*;
+use lexer::Num;
+use reader::{AbbreviationKind, Datum};
 
 mod keywords;
 
@@ -68,6 +70,68 @@ pub enum Instruction {
     Eq,
 }
 
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub struct InstructionRef(&'static str);
+
+impl<'a> From<&'a Instruction> for InstructionRef {
+    fn from(instruction: &Instruction) -> InstructionRef {
+        InstructionRef(instruction.variant_name())
+    }
+}
+
+impl Display for InstructionRef {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.pad(&self.0)
+    }
+}
+
+impl Debug for InstructionRef {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(self.0)
+    }
+}
+
+impl Instruction {
+    // TODO: this should be a custome derive or something
+    fn variant_name(&self) -> &'static str {
+        use self::Instruction::*;
+
+        match *self {
+            String(..) => "String",
+            Character(..) => "Character",
+            Boolean(..) => "Boolean",
+            Symbol(..) => "Symbol",
+            Integer(..) => "Integer",
+            Float(..) => "Float",
+            InvalidNumber => "InvalidNumber",
+            Nil => "Nil",
+            EmptyList => "EmpytList",
+            Call(..) => "Call",
+            Arity(..) => "Arity",
+            Ret => "Ret",
+            Branch(..) => "Branch",
+            BranchIf(..) => "BranchIf",
+            BranchUnless(..) => "BranchUnless",
+            ROBranchIf(..) => "ROBranchIf",
+            ROBranchUnless(..) => "ROBranchUnless",
+            Lambda { .. } => "Lambda",
+            Promise { .. } => "Promise",
+            Pair => "Pair",
+            List(..) => "List",
+            Vector(..) => "Vector",
+            Pop => "Pop",
+            LoadVar(..) => "LoadVar",
+            DefineVar(..) => "DefineVar",
+            SetVar(..) => "SetVar",
+            NewEnv => "NewEnv",
+            PopEnv => "PopEnv",
+            And => "And",
+            Or => "Or",
+            Eq => "Eq",
+        }
+    }
+}
+
 type LambdaFormals = (Vec<String>, Option<String>);
 
 #[derive(Debug, Eq, PartialEq)]
@@ -76,11 +140,11 @@ pub enum ParsingError {
 }
 
 macro_rules! check {
-    ($check:expr, $err:expr) => (
+    ($check:expr, $err:expr) => {
         if !$check {
             return Err($err);
         }
-    )
+    };
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -97,9 +161,9 @@ pub fn compile_expression(d: Datum) -> Option<Vec<Instruction>> {
 
 fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, ParsingError> {
     macro_rules! simple_datum {
-        ($T:ident, $c:expr) => (
+        ($T:ident, $c:expr) => {
             Ok(vec![Instruction::$T($c)])
-        )
+        };
     }
 
     // Simple cases

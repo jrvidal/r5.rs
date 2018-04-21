@@ -1,5 +1,5 @@
-use std::fmt::Debug;
 use gc::{Finalize, Trace};
+use std::fmt::Debug;
 
 #[derive(Clone)]
 pub(super) struct Stack<T>(Vec<T>);

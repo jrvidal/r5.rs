@@ -54,7 +54,7 @@ fn cons(vm: &mut VmState, _: (usize, bool), _: &Option<Branch>) -> RunResult {
 }
 
 macro_rules! set_pair {
-    ($name:ident, $borrowed:ident, $part:expr) => (
+    ($name:ident, $borrowed:ident, $part:expr) => {
         fn $name(vm: &mut VmState, _: (usize, bool), _: &Option<Branch>) -> RunResult {
             let car = vm.stack.pop().unwrap();
             let pair = if let Value::Pair(pair) = vm.stack.pop().unwrap() {
@@ -69,7 +69,7 @@ macro_rules! set_pair {
             vm.stack.push(Value::Nil);
             Ok(())
         }
-    )
+    };
 }
 
 set_pair!(set_car, borrowed, borrowed.0);
@@ -265,12 +265,8 @@ fn substraction(vm: &mut VmState, (n_of_args, _): (usize, bool), _: &Option<Bran
 }
 
 macro_rules! comparator_impl {
-    ($name:ident, $method:path) => (
-        fn $name(
-            vm: &mut VmState,
-            (n_of_args, _): (usize, bool),
-            _: &Option<Branch>,
-        ) -> RunResult {
+    ($name:ident, $method:path) => {
+        fn $name(vm: &mut VmState, (n_of_args, _): (usize, bool), _: &Option<Branch>) -> RunResult {
             if n_of_args == 0 {
                 vm.stack.push(Value::Boolean(true));
                 return Ok(());
@@ -303,7 +299,7 @@ macro_rules! comparator_impl {
             vm.stack.push(Value::Boolean(acc));
             Ok(())
         }
-    )
+    };
 }
 
 use std::cmp::PartialOrd;
@@ -313,15 +309,13 @@ comparator_impl!(greater_than, PartialOrd::gt);
 comparator_impl!(geq_than, PartialOrd::ge);
 
 macro_rules! simple_type {
-    ($name:ident) => (
-        fn $name(
-            vm: &mut VmState, _: (usize, bool), _: &Option<Branch>
-        ) -> RunResult {
+    ($name:ident) => {
+        fn $name(vm: &mut VmState, _: (usize, bool), _: &Option<Branch>) -> RunResult {
             let value = vm.stack.pop().unwrap();
             vm.stack.push(Value::Boolean(Value::$name(&value)));
             Ok(())
         }
-    )
+    };
 }
 
 // TODO: change to brackets if/when rustfmt allows
