@@ -40,16 +40,7 @@ impl<T> Stack<T> {
 
 impl<T: Debug> Debug for Stack<T> {
     fn fmt(&self, fmt: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        write!(fmt, "[")?;
-        let l = self.0.len();
-        for i in 0..l {
-            write!(fmt, "{:?}", self.0[l - i - 1])?;
-            if i != l - 1 {
-                write!(fmt, ", ")?;
-            }
-        }
-
-        write!(fmt, "]")
+        fmt.debug_list().entries(self.0.iter()).finish()
     }
 }
 

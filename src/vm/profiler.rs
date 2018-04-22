@@ -1,6 +1,6 @@
+use compiler::InstructionRef;
 use std::collections::{HashMap, hash_map::Entry};
 use std::time::Instant;
-use compiler::InstructionRef;
 
 pub trait Profiler {
     fn on_instruction_start(&mut self, instruction: InstructionRef);
@@ -82,9 +82,7 @@ impl Profiler for TimeProfiler {
 
         lines.sort_by(|(dur1, _), (dur2, _)| dur1.partial_cmp(dur2).unwrap().reverse());
 
-        lines.into_iter().for_each(|(_, line)| {
-            report += &line
-        });
+        lines.into_iter().for_each(|(_, line)| report += &line);
 
         Some(report)
     }
