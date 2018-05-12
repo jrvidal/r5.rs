@@ -138,10 +138,26 @@ fn cond_arrow() {
 }
 
 #[test]
+fn cond_else() {
+    assert_eq![
+        with_null!["(cond (#f 'a) (else 'b))"],
+        Ok(Value::Symbol("b".into())),
+    ];
+}
+
+#[test]
 fn cond_arrow_false() {
     assert_eq![
         with_null!["(cond (#f => car) (#t 'z))"],
         Ok(Value::Symbol("z".into())),
+    ];
+}
+
+#[test]
+fn cond_arity_check() {
+    assert_eq![
+        with_null!["(cond (#t => (lambda (x y) x)))"],
+        rt_err![BadArgType],
     ];
 }
 

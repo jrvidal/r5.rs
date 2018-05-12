@@ -6,25 +6,40 @@ use helpers::ImmutableString;
 
 pub type Environment = GenericEnvironment<Value>;
 
+/// Scheme values
 #[derive(Debug, Clone)]
 pub enum Value {
+    /// The "unspecified" value returned by some forms (e.g. `(set!)`)
     Nil,
+    /// The emtpy list `'()`
     EmptyList,
+    /// A symbol (`'a`)
     Symbol(ImmutableString),
+    /// A 32-bit integer
     Integer(i32),
+    /// A 32-bit float
     Float(f32),
+    /// A non-supported number
     InvalidNumber,
+    /// A boolean
     Boolean(bool),
+    /// A UTF-8 character
     Character(char),
+    /// A Scheme vector
     Vector(GcShared<Vec<Value>>),
+    /// A mutable string
     String(GcShared<String>),
+    /// A procedure
     Procedure {
         code: Branch,
         environment: GcShared<Environment>,
         arity: (usize, bool),
     },
+    /// A pair (`'(1 . 2)`)
     Pair(GcShared<Pair<Value>>),
+    /// A natively implemented procedure
     NativeProcedure(NativeProcedure),
+    /// A delayed computation
     Promise {
         code: Branch,
         environment: GcShared<Environment>,
@@ -174,6 +189,7 @@ macro_rules! simple_type {
 }
 
 impl Value {
+    /// Pretty-prints the value for the REPL
     pub fn to_repl(&self) -> String {
         debug!("to_repl: {:?}", self);
         match *self {

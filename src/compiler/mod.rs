@@ -33,11 +33,10 @@ pub enum Instruction {
     Nil,
     /// Pushes an empty list
     EmptyList,
-    /// Call the top-most value of the stack with (<is tail call>, <number of arguments in the stack>)
+    /// Call the top-most value of the stack with (`<is tail call>`, `<number of arguments in the stack>`)
     Call(bool, usize),
-    // // Arity check for a procedure, read-only
+    /// Arity check for a procedure, read-only
     Arity(usize, bool),
-
     /// Return from procedure call
     Ret,
     /// Branch `+n` instructions unconditionally
