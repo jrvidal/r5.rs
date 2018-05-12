@@ -20,10 +20,10 @@ impl<T> Stack<T> {
         let i = self.index(index);
         self.0.get(i)
     }
-    // pub fn remove(&mut self, index: usize) -> T {
-    //     let i = self.index(index);
-    //     self.0.remove(i)
-    // }
+    pub fn remove(&mut self, index: usize) -> T {
+        let i = self.index(index);
+        self.0.remove(i)
+    }
     // pub fn swap_remove(&mut self, index: usize) -> T {
     //     let i = self.index(index);
     //     self.0.swap_remove(i)

@@ -7,6 +7,7 @@ use std::str::FromStr;
 #[cfg(test)]
 mod test;
 
+/// A token for a number literal
 #[derive(Debug, PartialEq, Clone)]
 pub struct NumberToken {
     exactness: Option<Exactness>,
@@ -52,6 +53,8 @@ impl From<NumberToken> for Result<Num, InvalidNumber> {
     }
 }
 
+/// The value represented by a number literal
+// This is most likely not part of a lexer?
 pub enum Num {
     Integer(i32),
     Float(f32),

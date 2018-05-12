@@ -333,6 +333,12 @@ fn or_simple() {
 }
 
 #[test]
+fn or_value() {
+    assert_eq![with_null!["(or #f 'a)"], Ok(Value::Symbol("a".into()))];
+    assert_eq![with_null!["(or #f 'a #t)"], Ok(Value::Symbol("a".into()))];
+}
+
+#[test]
 fn stdlib_equal_simple() {
     assert_eq![
         with_std!["(equal? '(a) (list 'a))"],

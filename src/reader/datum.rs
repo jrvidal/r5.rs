@@ -1,7 +1,7 @@
 use lexer::{NumberToken, Token};
 use std::collections::VecDeque;
 
-// A "datum" is basically a balanced token tree
+/// A "datum" is basically a balanced token tree
 #[derive(Debug, Clone, PartialEq)]
 pub enum Datum {
     Boolean(bool),
@@ -23,6 +23,7 @@ pub enum Datum {
     Vector(VecDeque<Datum>),
 }
 
+/// The type of a quotation
 #[derive(Debug, Clone, PartialEq)]
 pub enum AbbreviationKind {
     Quote,
@@ -38,6 +39,7 @@ pub enum ReaderError {
     UnexpectedToken,
 }
 
+/// Parses tokens into datums
 pub fn parse_datum(stream: &mut VecDeque<Token>) -> Result<Option<Datum>, ReaderError> {
     let x = stream.pop_front();
     if x.is_none() {

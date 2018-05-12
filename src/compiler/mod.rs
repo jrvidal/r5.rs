@@ -15,61 +15,76 @@ mod keywords;
 /// The "ISA" of the interpreter
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
-    // *** Push simple scalars
+    /// Pushes a string into the stack
     String(CowString),
+    /// Pushes a character into the stack
     Character(char),
+    /// Pushes a boolean into the stack
     Boolean(bool),
+    /// Pushes a string into the stack
     Symbol(ImmutableString),
+    /// Pushes an integer into the stack
     Integer(i32),
+    /// Pushes a float into the stack
     Float(f32),
+    /// Pushes an invalid number into the stack
     InvalidNumber,
+    /// Pushes the Nil value into the stack
     Nil,
+    /// Pushes an empty list
     EmptyList,
-    // ***
-    // Call(is_tail, n_of_args), save return environment if it's not tail
+    /// Call the top-most value of the stack with (<is tail call>, <number of arguments in the stack>)
     Call(bool, usize),
-    // Arity check for a procedure, read-only
+    // // Arity check for a procedure, read-only
     Arity(usize, bool),
-    // Return, restore return environment
+
+    /// Return from procedure call
     Ret,
-    // Branch +n unconditionally
+    /// Branch `+n` instructions unconditionally
     Branch(isize),
-    // Branch +n if stack pop is truthy
+    /// Branch `+n` instructions if popped value is truthy
     BranchIf(isize),
-    // Branch +n if stack pop is falsy
+    /// Branch `+n` instructions if popped value is falsy
     BranchUnless(isize),
-    // Non-popping versions
+    /// Branch `+n` instructions if top-most stack value is truthy (without popping)
     ROBranchIf(isize),
+    /// Branch `+n` instructions if top-most stack value is falsy (without popping)
     ROBranchUnless(isize),
-    // Push compiled lambda
+    /// Push compiled lambda into the stack
     Lambda {
         code: Rc<Vec<Instruction>>,
         arity: (usize, bool),
     },
-    // Push compiled promise
+    /// Push compiled promise into the stack
     Promise(Rc<Vec<Instruction>>),
-    // Make pair from 2 pops and push
+    /// Push pair of two popped values into the stack
     Pair,
-    // Make list from n pops and push. Bool indicates improper list (+2 pops)
+    /// Push list from popped values into the stack, with `(<number of elements>, <improper>)`.
+    /// An improper list pops 2 extra values out of the stack.
     List(usize, bool),
-    // Make vector from n pops and push
+    /// Push vector of `n` popped values into the stack.
     Vector(usize),
-    // ...
+    // Pop a value out of the stack
     Pop,
-    // Load variable from environment
+    /// Push variable from current environment into the stack
     LoadVar(ImmutableString),
-    // Define variable in environment
+    /// Add popped value from the stack as a variable to the current environment
     DefineVar(ImmutableString),
-    // Set variable in environment (up to root)
+    /// `set!` popped value from the stack in the current environment
     SetVar(ImmutableString),
+    /// Create a new child from the current environment and replace it
     NewEnv,
+    /// Replace the current environment with its parent
     PopEnv,
+    /// Push the logical, lazy `and` of the two top-most values.
     And,
+    /// Push the logical, lazy `or` of the two top-most values.
     Or,
-    // Compare popping _only_ the first operand
+    /// Compare popping _only_ the first operand
     Eq,
 }
 
+/// A lightweight identifier of an instruction type
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct InstructionRef(&'static str);
 
@@ -155,6 +170,7 @@ enum LetExp {
     NamedLet,
 }
 
+/// Compiles a datum into executable bytecode
 pub fn compile_expression(d: Datum) -> Option<Vec<Instruction>> {
     compile_expression_inner(d, false).ok()
 }

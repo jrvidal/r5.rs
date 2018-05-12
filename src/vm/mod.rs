@@ -406,18 +406,21 @@ pub fn exec<P: Profiler>(
                 vm.environment = parent;
             }
             Instruction::And => {
-                let value1 = vm.stack.pop().unwrap();
-                let cond1: bool = (&value1).into();
-                let value2 = vm.stack.pop().unwrap();
-                let result = cond1 && (&value2).into();
-                vm.stack.push(Value::Boolean(result));
+                let cond: bool = (&vm.stack[0]).into();
+
+                if cond {
+                    vm.stack.pop();
+                } else {
+                    vm.stack.remove(1);
+                }
             }
             Instruction::Or => {
-                let value1 = vm.stack.pop().unwrap();
-                let cond1: bool = (&value1).into();
-                let value2 = vm.stack.pop().unwrap();
-                let result = cond1 || (&value2).into();
-                vm.stack.push(Value::Boolean(result));
+                let cond: bool = (&vm.stack[0]).into();
+                if cond {
+                    vm.stack.remove(1);
+                } else {
+                    vm.stack.pop();
+                }
             }
             Instruction::Eq => {
                 let value1 = vm.stack.pop().unwrap();
