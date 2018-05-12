@@ -210,7 +210,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                 kind: AbbreviationKind::Quasiquote,
                 datum,
             },
-        ) => return parse_quasiquotation(*datum),
+        ) => return compile_quasiquotation(*datum),
 
         // Nope
         // http://stackoverflow.com/questions/18641757/unquoted-vectors-in-r5rs-scheme
@@ -232,10 +232,8 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
     match (&symbol[..], datums.len()) {
         // // Verbose quotations
         (keywords::QUOTE, 1) => compile_quotation(datums.pop_front().unwrap()),
-        // // Verbose quasiquotations
-        // (keywords::QUASIQUOTE, 1) => {
-        //     Ok(datums.pop_front().map(Expression::QuasiQuotation).unwrap())
-        // }
+        // Verbose quasiquotations
+        (keywords::QUASIQUOTE, 1) => compile_quasiquotation(datums.pop_front().unwrap()),
         // If
         (keywords::IF, 2) | (keywords::IF, 3) => {
             let test = compile_expression_inner(datums.pop_front().unwrap(), false)?;
@@ -725,12 +723,10 @@ fn compile_quotation(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
             instructions.push(Instruction::List(n, true));
             instructions
         }
-        Datum::Abbreviation {
-            kind: AbbreviationKind::Quote,
-            datum,
-        } => {
+        Datum::Abbreviation { kind, datum } => {
             let mut instructions = compile_quotation(*datum)?;
-            instructions.insert(0, Instruction::Symbol(keywords::QUOTE.into()));
+            let keyword: &str = kind.into();
+            instructions.insert(0, Instruction::Symbol(keyword.into()));
             instructions.push(Instruction::List(2, false));
             instructions
         }
@@ -747,11 +743,6 @@ fn compile_quotation(d: Datum) -> Result<Vec<Instruction>, ParsingError> {
             instructions.push(Instruction::Vector(n));
             return Ok(instructions);
         }
-
-        Datum::Abbreviation {
-            kind: AbbreviationKind::Quasiquote,
-            ..
-        } => panic!("todo quasiquote"),
         d => compile_expression_inner(d, false)?,
     };
 
@@ -1112,7 +1103,7 @@ fn parse_variable(datum: Datum) -> Result<String, ParsingError> {
 }
 
 // TO DO: does this method really take 1 datum? The grammar suggests so.
-fn parse_quasiquotation(_datum: Datum) -> Result<Vec<Instruction>, ParsingError> {
+fn compile_quasiquotation(_datum: Datum) -> Result<Vec<Instruction>, ParsingError> {
     panic!("unimplemented: parse quasiquotation expressions");
 }
 
@@ -1199,6 +1190,17 @@ fn find_unused_vars(instructions: &[Instruction]) -> (String, String) {
             vars.1.push('b');
         } else {
             break vars;
+        }
+    }
+}
+
+impl From<AbbreviationKind> for &'static str {
+    fn from(kind: AbbreviationKind) -> &'static str {
+        match kind {
+            AbbreviationKind::Comma => keywords::UNQUOTE,
+            AbbreviationKind::CommaAt => keywords::UNQUOTE_SPLICING,
+            AbbreviationKind::Quote => keywords::QUOTE,
+            AbbreviationKind::Quasiquote => keywords::QUASIQUOTE,
         }
     }
 }
