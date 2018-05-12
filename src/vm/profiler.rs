@@ -26,6 +26,12 @@ impl TimeProfiler {
     }
 }
 
+impl Default for TimeProfiler {
+    fn default() -> Self {
+        TimeProfiler::new()
+    }
+}
+
 impl Profiler for TimeProfiler {
     fn on_instruction_start(&mut self, instruction: InstructionRef) {
         if self.next.is_some() {
@@ -42,8 +48,8 @@ impl Profiler for TimeProfiler {
 
         let elapsed = self.start.elapsed();
         let mut nanos = 0;
-        nanos += elapsed.as_secs() as u64 * 1000000000;
-        nanos += elapsed.subsec_nanos() as u64;
+        nanos += elapsed.as_secs() * 1_000_000_000;
+        nanos += u64::from(elapsed.subsec_nanos());
         match self.instructions.entry(instruction) {
             Entry::Occupied(mut entry) => {
                 entry.get_mut().0 += 1;

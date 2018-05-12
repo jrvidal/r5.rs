@@ -77,19 +77,17 @@ impl<V: Trace + Clone> Environment<V> {
     pub fn get(&self, name: &ImmutableString) -> Option<V> {
         if self.bindings.contains_key(name) {
             return self.bindings.get(name).cloned();
-        } else if self.parent.is_none() {
-            return None;
         }
-        let mut environment = self.parent.clone().unwrap();
+
+        let mut environment = self.parent.as_ref()?.clone();
         loop {
             environment = {
                 let borrowed = environment.borrow();
                 if borrowed.bindings.contains_key(name) {
                     return borrowed.bindings.get(name).cloned();
-                } else if borrowed.parent.is_none() {
-                    return None;
                 }
-                borrowed.parent.clone().unwrap()
+
+                borrowed.parent.as_ref()?.clone()
             }
         }
     }

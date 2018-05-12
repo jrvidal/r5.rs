@@ -352,7 +352,7 @@ impl RealLiteral {
                 numerator: (ref digits, pounds),
                 ..
             } => RealLiteral::Integer {
-                pounds: pounds,
+                pounds,
                 digits: digits.clone(),
             },
             _ => panic!("Not a fraction"),
@@ -366,7 +366,7 @@ impl RealLiteral {
                 denominator: (ref digits, pounds),
                 ..
             } => RealLiteral::Integer {
-                pounds: pounds,
+                pounds,
                 digits: digits.clone(),
             },
             _ => panic!("Not a fraction"),
@@ -652,15 +652,12 @@ fn parse_real<T: LexerIterator>(
     }
 
     Ok(match num_type {
-        Number::Int => RealLiteral::Integer {
-            digits: digits,
-            pounds: pounds,
-        },
+        Number::Int => RealLiteral::Integer { digits, pounds },
         Number::Dec => RealLiteral::Decimal {
-            digits: digits,
-            pounds: pounds,
-            point: point,
-            suffix: suffix,
+            digits,
+            pounds,
+            point,
+            suffix,
         },
         Number::Frac => RealLiteral::Fraction {
             numerator: numerator.unwrap(),
@@ -698,9 +695,9 @@ fn parse_suffix<T: LexerIterator>(stream: &mut T) -> Result<DecSuffix, String> {
         Err("bad marker!".to_string())
     } else {
         Ok(DecSuffix {
-            sign: sign,
-            marker: marker,
-            digits: digits,
+            sign,
+            marker,
+            digits,
         })
     }
 }

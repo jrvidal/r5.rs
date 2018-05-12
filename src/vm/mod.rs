@@ -157,10 +157,7 @@ impl VmState {
     fn pop_as_list(&mut self, count: usize, improper: bool) -> Option<Value> {
         let mut pair = if improper {
             let cdr = self.stack.pop();
-            if cdr.is_none() {
-                return None;
-            }
-            cdr.unwrap()
+            cdr?
         } else {
             Value::EmptyList
         };
@@ -202,8 +199,8 @@ pub fn exec<P: Profiler>(
     use self::ExecutionError::*;
 
     let mut vm = VmState {
+        environment,
         pc: 0,
-        environment: environment,
         stack: Stack::default(),
         call_stack: Stack::default(),
         next_pc: None,

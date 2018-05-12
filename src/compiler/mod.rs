@@ -297,7 +297,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                     return Err(ParsingError::Illegal);
                 };
 
-                check![datums.len() >= 1, ParsingError::Illegal];
+                check![!datums.is_empty(), ParsingError::Illegal];
 
                 let arrow = match datums.get(1) {
                     Some(&Datum::Symbol(ref s)) if s == keywords::ARROW => true,
@@ -524,7 +524,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Pa
                 .list()
                 .ok_or(ParsingError::Illegal)?;
 
-            check![test_result.len() >= 1, ParsingError::Illegal];
+            check![!test_result.is_empty(), ParsingError::Illegal];
             let test = compile_expression_inner(test_result.pop_front().unwrap(), false)?;
             let sequence = compile_sequence(test_result, tail)?;
 
