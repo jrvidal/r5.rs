@@ -4,12 +4,40 @@ type RunResult = Result<(), ExecutionError>;
 type NatFn = fn(&mut VmState, CallInfo, &Option<Branch>) -> RunResult;
 type CallInfo = (usize, bool);
 
-pub(super) const STDLIB: [(&str, NatFn, CallInfo); 28] = [
+pub(super) const STDLIB: &[(&str, NatFn, CallInfo)] = &[
     ("list", list, (0, true)),
     ("cons", cons, (2, false)),
     ("apply", apply, (2, false)),
     ("car", car, (1, false)),
     ("cdr", cdr, (1, false)),
+    ("caar", caar, (1, false)),
+    ("cadr", cadr, (1, false)),
+    ("cdar", cdar, (1, false)),
+    ("cddr", cddr, (1, false)),
+    ("caaar", caaar, (1, false)),
+    ("caadr", caadr, (1, false)),
+    ("cadar", cadar, (1, false)),
+    ("caddr", caddr, (1, false)),
+    ("cdaar", cdaar, (1, false)),
+    ("cdadr", cdadr, (1, false)),
+    ("cddar", cddar, (1, false)),
+    ("cdddr", cdddr, (1, false)),
+    ("caaaar", caaaar, (1, false)),
+    ("caaadr", caaadr, (1, false)),
+    ("caadar", caadar, (1, false)),
+    ("caaddr", caaddr, (1, false)),
+    ("cadaar", cadaar, (1, false)),
+    ("cadadr", cadadr, (1, false)),
+    ("caddar", caddar, (1, false)),
+    ("cadddr", cadddr, (1, false)),
+    ("cdaaar", cdaaar, (1, false)),
+    ("cdaadr", cdaadr, (1, false)),
+    ("cdadar", cdadar, (1, false)),
+    ("cdaddr", cdaddr, (1, false)),
+    ("cddaar", cddaar, (1, false)),
+    ("cddadr", cddadr, (1, false)),
+    ("cdddar", cdddar, (1, false)),
+    ("cddddr", cddddr, (1, false)),
     ("set-car!", set_car, (2, false)),
     ("set-cdr!", set_cdr, (2, false)),
     ("length", length, (1, false)),
@@ -118,25 +146,69 @@ fn apply(vm: &mut VmState, call_info: (usize, bool), branch: &Option<Branch>) ->
     vm.call(call_info.1, args_passed, branch)
 }
 
-fn car(vm: &mut VmState, _call_info: (usize, bool), _: &Option<Branch>) -> RunResult {
-    let pair = vm.stack
-        .pop()
-        .unwrap()
-        .pair()
-        .ok_or(ExecutionError::BadArgType)?;
-    vm.stack.push(pair.borrow().0.clone());
-    Ok(())
+macro_rules! car {
+    ($v:expr) => {{
+        let pair = $v.pair().ok_or(ExecutionError::BadArgType)?;
+        let borrowed = pair.borrow();
+        borrowed.0.clone()
+    }};
 }
 
-fn cdr(vm: &mut VmState, _call_info: (usize, bool), _: &Option<Branch>) -> RunResult {
-    let pair = vm.stack
-        .pop()
-        .unwrap()
-        .pair()
-        .ok_or(ExecutionError::BadArgType)?;
-    vm.stack.push(pair.borrow().1.clone());
-    Ok(())
+macro_rules! cdr {
+    ($v:expr) => {{
+        let pair = $v.pair().ok_or(ExecutionError::BadArgType)?;
+        let borrowed = pair.borrow();
+        borrowed.1.clone()
+    }};
 }
+
+macro_rules! pair_getter_expr {
+    ($v:expr) => { $v };
+    ($v:expr,) => { $v };
+    ($v:expr, a, $( $token:ident, )*) => { car![pair_getter_expr![$v, $($token,)*]] };
+    ($v:expr, d, $( $token:ident, )*) => { cdr![pair_getter_expr![$v, $($token,)*]] };
+}
+
+macro_rules! pair_getter_fn {
+    ($fun:ident, $( $token:ident, )*) => {
+        fn $fun(vm: &mut VmState, _call_info: (usize, bool), _: &Option<Branch>) -> RunResult {
+            let result = pair_getter_expr![vm.stack.pop().unwrap(), $( $token, )*];
+            vm.stack.push(result);
+            Ok(())
+        }
+    }
+}
+
+pair_getter_fn![car, a,];
+pair_getter_fn![cdr, d,];
+pair_getter_fn![caar, a, a,];
+pair_getter_fn![cadr, a, d,];
+pair_getter_fn![cdar, d, a,];
+pair_getter_fn![cddr, d, d,];
+pair_getter_fn![caaar, a, a, a,];
+pair_getter_fn![caadr, a, a, d,];
+pair_getter_fn![cadar, a, d, a,];
+pair_getter_fn![caddr, a, d, d,];
+pair_getter_fn![cdaar, d, a, a,];
+pair_getter_fn![cdadr, d, a, d,];
+pair_getter_fn![cddar, d, d, a,];
+pair_getter_fn![cdddr, d, d, d,];
+pair_getter_fn![caaaar, a, a, a, a,];
+pair_getter_fn![caaadr, a, a, a, d,];
+pair_getter_fn![caadar, a, a, d, a,];
+pair_getter_fn![caaddr, a, a, d, d,];
+pair_getter_fn![cadaar, a, d, a, a,];
+pair_getter_fn![cadadr, a, d, a, d,];
+pair_getter_fn![caddar, a, d, d, a,];
+pair_getter_fn![cadddr, a, d, d, d,];
+pair_getter_fn![cdaaar, d, a, a, a,];
+pair_getter_fn![cdaadr, d, a, a, d,];
+pair_getter_fn![cdadar, d, a, d, a,];
+pair_getter_fn![cdaddr, d, a, d, d,];
+pair_getter_fn![cddaar, d, d, a, a,];
+pair_getter_fn![cddadr, d, d, a, d,];
+pair_getter_fn![cdddar, d, d, d, a,];
+pair_getter_fn![cddddr, d, d, d, d,];
 
 fn force(vm: &mut VmState, call_info: (usize, bool), branch: &Option<Branch>) -> RunResult {
     if !vm.stack.get(0).unwrap().is_promise() {

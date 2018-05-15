@@ -1,5 +1,5 @@
 use super::{interpret, InterpreterError};
-use vm::{default_env, null_env, ExecutionError, Value};
+use vm::{default_env, null_env, DeepEqual, ExecutionError, Value};
 
 use self::ExecutionError::*;
 
@@ -18,6 +18,18 @@ macro_rules! with_std {
 macro_rules! rt_err {
     ($err:expr) => {
         Err(InterpreterError::Exec($err))
+    };
+}
+
+macro_rules! assert_deep_equal {
+    ($left:expr, $right:expr) => {
+        if !$left.equal(&$right) {
+            panic!(
+                "{} is not equals to {}",
+                &$left.to_repl(),
+                &$right.to_repl()
+            );
+        }
     };
 }
 
@@ -365,4 +377,72 @@ fn stdlib_equal_simple() {
         with_std!["(equal? \"foobar\" \"foobar\")"],
         Ok(Value::Boolean(true)),
     ];
+}
+
+#[test]
+fn quasiquotation_simple() {
+    assert_eq![with_std!["(car `(a b))"], Ok(Value::Symbol("a".into()))];
+    assert_eq![with_std!["(cadr `(a b))"], Ok(Value::Symbol("b".into()))];
+
+    let quoted = with_null!["`#(a b)"].unwrap();
+    let expected = with_null!["'#(a b)"].unwrap();
+    assert_deep_equal![quoted, expected];
+
+    assert_eq![
+        with_std!["(car ``a)"],
+        Ok(Value::Symbol("quasiquote".into())),
+    ];
+    assert_eq![with_std!["(cadr ``a)"], Ok(Value::Symbol("a".into()))];
+
+    assert_eq![
+        with_std!["(let ((x 'a)) `,x)"],
+        Ok(Value::Symbol("a".into())),
+    ];
+
+    let quoted = with_std!["`(a `(b ,(foo ,(+ 1 3))))"].unwrap();
+    let expected = with_null!["'(a (quasiquote (b (unquote (foo 4)))))"].unwrap();
+    assert_deep_equal![quoted, expected];
+
+    let quoted = with_std!["(let ((name1 'x) (name2 'y)) `(a `(b ,,name1 ,',name2)))"].unwrap();
+    let expected = with_null!["'(a (quasiquote (b (unquote x) (unquote (quote y)))))"].unwrap();
+    assert_deep_equal![quoted, expected];
+}
+
+#[test]
+fn quasiquotation_with_splicing() {
+    assert_eq![with_std!["`(,@(list))"], Ok(Value::EmptyList)];
+
+    let quoted = with_std!["`(,@(list 1))"].unwrap();
+    let expected = with_std!["'(1)"].unwrap();
+    assert_deep_equal![quoted, expected];
+
+    let quoted = with_std!["`(a ,@'(b))"].unwrap();
+    let expected = with_std!["'(a b)"].unwrap();
+    assert_deep_equal![quoted, expected];
+
+    let quoted = with_std!["`(a ,@'(b c) d e ,@'(f g) h)"].unwrap();
+    let expected = with_std!["'(a b c d e f g h)"].unwrap();
+    assert_deep_equal![quoted, expected];
+
+    let quoted = with_std!["`#(a ,@'(b c) d e ,@'(f g) h)"].unwrap();
+    let expected = with_std!["'#(a b c d e f g h)"].unwrap();
+    assert_deep_equal![quoted, expected];
+}
+
+#[test]
+fn quasiquotation_nested() {
+    let quoted = with_null!["(let ((x 'a)) `(1 ,`(2 ,x)))"].unwrap();
+    let expected = with_null!["'(1 (2 a))"].unwrap();
+    assert_deep_equal![quoted, expected];
+}
+
+#[test]
+fn quasiquoted_spliced_pairs() {
+    let quoted = with_std!["`(,@(list 'a 'b) . c)"].unwrap();
+    let expected = with_null!["`(a b . c)"].unwrap();
+    assert_deep_equal![quoted, expected];
+
+    assert![with_null!["`(a . ,@'(b))"].is_err()];
+
+    assert_eq![with_null!["`(,@'() . b)"], rt_err![InvalidPair]];
 }

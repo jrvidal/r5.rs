@@ -1,11 +1,12 @@
 //! A virtual machine to interpret the ISA from `compiler`.
 
+use std::collections::{HashMap, VecDeque};
+use std::rc::Rc;
+
 use self::gc::shared;
 use self::stack::Stack;
 pub use self::value::{DeepEqual, NativeProcedure, Pair, Value};
 use compiler::Instruction;
-use std::collections::HashMap;
-use std::rc::Rc;
 
 pub use self::gc::GcShared;
 pub use self::profiler::*;
@@ -48,6 +49,7 @@ pub enum ExecutionError {
     BadArgType,
     UnboundVar,
     InvalidNumber,
+    InvalidPair,
     Internal(&'static str),
 }
 
@@ -154,6 +156,7 @@ impl VmState {
         Some(values)
     }
 
+    /// Pops `count` values out of the stack into a list in reverse order
     fn pop_as_list(&mut self, count: usize, improper: bool) -> Option<Value> {
         let mut pair = if improper {
             let cdr = self.stack.pop();
@@ -175,15 +178,31 @@ impl VmState {
         Some(pair)
     }
 
-    fn push_list(&mut self, list: Value) {
+    fn pop_as_list_with(&mut self, count: usize, start: Option<Value>) -> Option<Value> {
+        let mut pair = start.unwrap_or(Value::EmptyList);
+
+        for _ in 0..count {
+            let car = match self.stack.pop() {
+                Some(val) => val,
+                None => return None,
+            };
+            pair = Value::Pair(shared(Pair(car, pair)));
+        }
+
+        Some(pair)
+    }
+
+    fn push_list(&mut self, list: Value) -> usize {
+        let mut len = 0;
         let mut pair = list;
         loop {
             let inner = match pair.pair() {
                 Some(pair) => pair,
-                None => return,
+                None => return len,
             };
 
             let borrowed = inner.borrow();
+            len += 1;
             self.stack.push(borrowed.0.clone());
 
             pair = borrowed.1.clone();
@@ -290,6 +309,61 @@ pub fn exec<P: Profiler>(
                 let pair = vm.pop_as_list(n + if improper { 2 } else { 0 }, improper)
                     .ok_or(Internal("Bad argc"))?;
                 vm.stack.push(pair);
+            }
+            Instruction::Flatten => {
+                let list = match vm.stack.pop() {
+                    Some(pair @ Value::Pair { .. }) => pair,
+                    Some(Value::EmptyList) => Value::EmptyList,
+                    _ => Err(Internal("Bad arg type"))?,
+                };
+
+                let length = vm.push_list(list);
+                vm.stack.push(Value::Integer(length as i32));
+            }
+            Instruction::DynList(n, improper) => {
+                let mut value = if improper {
+                    Some(vm.stack.pop().expect("cdr"))
+                } else {
+                    None
+                };
+                let mut with_car = false;
+                for _ in 0..n {
+                    let n_of_elements = match vm.stack.pop() {
+                        Some(Value::Integer(k)) if k >= 0 => k,
+                        _ => Err(Internal("Bad DynList header"))?,
+                    };
+
+                    if n_of_elements > 0 {
+                        with_car = true;
+                    }
+
+                    let new_value = vm.pop_as_list_with(n_of_elements as usize, value)
+                        .ok_or(Internal("Bad argc"))?;
+                    value = Some(new_value);
+                }
+
+                if improper && !with_car {
+                    Err(InvalidPair)?
+                }
+
+                vm.stack.push(value.unwrap_or(Value::EmptyList));
+            }
+            Instruction::DynVector(n) => {
+                let mut value = VecDeque::new();
+                for _ in 0..n {
+                    let n_of_elements = match vm.stack.pop() {
+                        Some(Value::Integer(k)) if k >= 0 => k,
+                        _ => Err(Internal("Bad DynList header"))?,
+                    };
+
+                    for _ in 0..n_of_elements {
+                        match vm.stack.pop() {
+                            Some(v) => value.push_front(v),
+                            None => Err(Internal("Bad argc"))?,
+                        }
+                    }
+                }
+                vm.stack.push(Value::Vector(shared(value.into())));
             }
             Instruction::Lambda { ref code, arity } => {
                 let environment = vm.environment.clone();
@@ -436,7 +510,7 @@ pub fn exec<P: Profiler>(
 pub fn default_env() -> GcShared<Environment> {
     let mut env = Environment::default();
 
-    for &(name, fun, arity) in &stdlib::STDLIB {
+    for &(name, fun, arity) in stdlib::STDLIB {
         env.define(
             name.into(),
             Value::NativeProcedure(NativeProcedure { fun, arity }),
