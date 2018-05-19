@@ -28,7 +28,7 @@ mod not_web {
     use rustyline::error::ReadlineError;
 
     pub fn main() {
-        env_logger::init().expect("logger");
+        env_logger::init();
 
         let file = args().nth(1);
         let with_profiler = var("PROFILE").map(|s| !s.is_empty()).unwrap_or(false);
