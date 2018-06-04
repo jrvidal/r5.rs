@@ -21,6 +21,7 @@ macro_rules! check {
 mod body;
 mod keywords;
 mod quotations;
+mod macros;
 
 /// The "ISA" of the interpreter
 #[derive(Debug, Clone, PartialEq)]

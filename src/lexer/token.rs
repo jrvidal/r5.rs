@@ -1,3 +1,4 @@
+use helpers::ImmutableString;
 use super::chars::{Chars, LexerIterator};
 
 /**
@@ -20,7 +21,7 @@ use super::number::NumberToken;
 /// A Scheme token
 #[derive(Clone, PartialEq, Debug)]
 pub enum Token {
-    Identifier(String),
+    Identifier(ImmutableString),
     Boolean(bool),
     Number(NumberToken),
     Character(char),
@@ -168,7 +169,7 @@ pub fn next_token<T: LexerIterator>(stream: &mut T) -> Result<Option<Token>, Tok
                     '.' => match (stream.peek(0), stream.peek(1)) {
                         (Some('.'), Some('.')) if is_delimiter!(peek3) => {
                             stream.advance(2);
-                            ret_val!(Token::Identifier("...".to_string()));
+                            ret_val!(Token::Identifier("...".into()));
                         }
                         (x, _) if is_delimiter!(x) => ret_val!(Token::Dot),
                         _ => ret_err!(InvalidDot),
@@ -202,7 +203,7 @@ pub fn next_token<T: LexerIterator>(stream: &mut T) -> Result<Option<Token>, Tok
 
                     // It's an identifier
                     '+' | '-' => if is_delimiter!(stream.peek(0)) {
-                        ret_val!(Token::Identifier(c.to_string()))
+                        ret_val!(Token::Identifier(c.to_string().into()))
                     } else {
                         ret_err!(UnexpectedCharacter)
                     },
@@ -219,7 +220,7 @@ pub fn next_token<T: LexerIterator>(stream: &mut T) -> Result<Option<Token>, Tok
                             string_buf.push(d);
                             state = ParsingState::Identifier;
                         }
-                        _ => ret_val!(Token::Identifier(d.to_string())),
+                        _ => ret_val!(Token::Identifier(d.to_string().into())),
                     },
                     _ => ret_err!(UnexpectedCharacter),
                 }
@@ -273,7 +274,7 @@ pub fn next_token<T: LexerIterator>(stream: &mut T) -> Result<Option<Token>, Tok
 
                 match stream.peek(0) {
                     Some(d) if is_subsequent(d) => {}
-                    _ => ret_val!(Token::Identifier(string_buf.clone())),
+                    _ => ret_val!(Token::Identifier(string_buf.clone().into())),
                 }
             }
         }
