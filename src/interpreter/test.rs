@@ -250,9 +250,7 @@ fn let_star_order() {
 #[test]
 fn named_let_basic() {
     assert_eq![
-        with_std![
-            "(let fn ((x '(a b))) (if (null? (cdr x)) (car x) (fn (cdr x))))"
-        ],
+        with_std!["(let fn ((x '(a b))) (if (null? (cdr x)) (car x) (fn (cdr x))))"],
         Ok(Value::Symbol("b".into())),
     ];
 }

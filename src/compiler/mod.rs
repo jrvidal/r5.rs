@@ -10,7 +10,17 @@ use helpers::*;
 use lexer::Num;
 use reader::{AbbreviationKind, Datum};
 
+macro_rules! check {
+    ($check:expr, $err:expr) => {
+        if !$check {
+            return Err($err);
+        }
+    };
+}
+
+mod body;
 mod keywords;
+mod quotations;
 
 /// The "ISA" of the interpreter
 #[derive(Debug, Clone, PartialEq)]
@@ -159,19 +169,9 @@ impl Instruction {
     }
 }
 
-type LambdaFormals = (Vec<String>, Option<String>);
-
 #[derive(Debug, Eq, PartialEq)]
 pub enum CompilerError {
     Illegal,
-}
-
-macro_rules! check {
-    ($check:expr, $err:expr) => {
-        if !$check {
-            return Err($err);
-        }
-    };
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -215,7 +215,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Co
                 kind: AbbreviationKind::Quote,
                 datum,
             },
-        ) => return compile_quotation(*datum),
+        ) => return quotations::compile_quotation(*datum),
 
         (
             _,
@@ -223,7 +223,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Co
                 kind: AbbreviationKind::Quasiquote,
                 datum,
             },
-        ) => return compile_quasiquotation(*datum),
+        ) => return quotations::compile_quasiquotation(*datum),
 
         // Nope
         // http://stackoverflow.com/questions/18641757/unquoted-vectors-in-r5rs-scheme
@@ -244,9 +244,11 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Co
 
     match (&symbol[..], datums.len()) {
         // // Verbose quotations
-        (keywords::QUOTE, 1) => compile_quotation(datums.pop_front().unwrap()),
+        (keywords::QUOTE, 1) => quotations::compile_quotation(datums.pop_front().unwrap()),
         // Verbose quasiquotations
-        (keywords::QUASIQUOTE, 1) => compile_quasiquotation(datums.pop_front().unwrap()),
+        (keywords::QUASIQUOTE, 1) => {
+            quotations::compile_quasiquotation(datums.pop_front().unwrap())
+        }
         // If
         (keywords::IF, 2) | (keywords::IF, 3) => {
             let test = compile_expression_inner(datums.pop_front().unwrap(), false)?;
@@ -291,8 +293,8 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Co
 
         // Lambda
         (keywords::LAMBDA, l) if l >= 2 => {
-            let formals = parse_lambda_formals_exp(datums.pop_front().unwrap())?;
-            compile_lambda_exp(formals, datums)
+            let formals = body::parse_lambda_formals_exp(datums.pop_front().unwrap())?;
+            body::compile_lambda_exp(formals, datums)
         }
 
         (keywords::COND, l) if l >= 1 => {
@@ -331,7 +333,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Co
                     total_len += 3;
                     datums.compiled()?
                 } else {
-                    compile_sequence(datums, tail)?
+                    body::compile_sequence(datums, tail)?
                 };
 
                 // Sequence plus branch to end
@@ -429,7 +431,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Co
                 let cases: Vec<Vec<Instruction>> =
                     if let Datum::List(l) = datums.pop_front().unwrap() {
                         l.into_iter()
-                            .map(compile_quotation)
+                            .map(quotations::compile_quotation)
                             .collect::<Result<_, _>>()?
                     } else {
                         return Err(CompilerError::Illegal);
@@ -444,7 +446,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Co
                 let cases_len = cases.iter().fold(0, |acc, d| acc + d.len() + 2);
                 total_len += cases_len;
 
-                let sequence = compile_sequence(datums, tail)?;
+                let sequence = body::compile_sequence(datums, tail)?;
 
                 total_len += sequence.len();
                 // Prefix and suffix: pop, branch, pop / and branch
@@ -537,9 +539,9 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Co
 
             check![!test_result.is_empty(), CompilerError::Illegal];
             let test = compile_expression_inner(test_result.pop_front().unwrap(), false)?;
-            let sequence = compile_sequence(test_result, tail)?;
+            let sequence = body::compile_sequence(test_result, tail)?;
 
-            let commands = compile_sequence(datums, false)?;
+            let commands = body::compile_sequence(datums, false)?;
 
             // <init>, <test>, BranchIf (to sequence), <commands>, <steps>, <refresh vars>, Branch(to test), <sequence>
 
@@ -664,7 +666,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Co
                 return Ok(vec![Instruction::Nil]);
             }
 
-            compile_sequence(datums, tail)
+            body::compile_sequence(datums, tail)
         }
 
         (keywords::DELAY, 1) => {
@@ -712,54 +714,6 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Co
         }
         _ => Err(CompilerError::Illegal),
     }
-}
-
-fn compile_quotation(d: Datum) -> Result<Vec<Instruction>, CompilerError> {
-    let instructions = match d {
-        Datum::Symbol(s) => vec![Instruction::Symbol(s.into())],
-        Datum::List(datums) => {
-            let mut instructions = vec![];
-            let n = datums.len();
-            for d in datums {
-                instructions.extend(compile_quotation(d)?);
-            }
-            instructions.push(Instruction::List(n, false));
-            instructions
-        }
-        Datum::Pair { car, cdr } => {
-            let mut instructions = vec![];
-            let n = car.len() - 1;
-            for d in car {
-                instructions.extend(compile_quotation(d)?);
-            }
-            instructions.extend(compile_quotation(*cdr)?);
-            instructions.push(Instruction::List(n, true));
-            instructions
-        }
-        Datum::Abbreviation { kind, datum } => {
-            let mut instructions = compile_quotation(*datum)?;
-            let keyword: &str = kind.into();
-            instructions.insert(0, Instruction::Symbol(keyword.into()));
-            instructions.push(Instruction::List(2, false));
-            instructions
-        }
-        Datum::Vector(datums) => {
-            let mut instructions = vec![];
-            let n = datums.len();
-
-            let mut iter = datums.into_iter();
-
-            while let Some(d) = iter.next_back() {
-                instructions.extend(compile_quotation(d)?);
-            }
-
-            instructions.push(Instruction::Vector(n));
-            return Ok(instructions);
-        }
-        d => compile_expression_inner(d, false)?,
-    };
-
-    Ok(instructions)
 }
 
 //
@@ -880,7 +834,7 @@ fn compile_let_exp(
         }
     }
 
-    let body = compile_body(datums, tail)?;
+    let body = body::compile_body(datums, tail)?;
     instructions.extend(body);
 
     let pops = if let LetExp::LetStar = let_type {
@@ -946,381 +900,12 @@ fn compile_call_exp(
     Ok(instructions)
 }
 
-// Order of formals: DefineVar(arg_n), ... DefineVar(arg_1)
-fn compile_lambda_exp(
-    formals: LambdaFormals,
-    datums: VecDeque<Datum>,
-) -> Result<Vec<Instruction>, CompilerError> {
-    let mut instructions = vec![];
-
-    let arity = (formals.0.len(), formals.1.is_some());
-    let mut args = {
-        let mut args = formals.0;
-        args.extend(formals.1);
-        args
-    };
-
-    while let Some(arg) = args.pop() {
-        instructions.push(Instruction::DefineVar(arg.into()))
-    }
-
-    let body = compile_body(datums, true)?;
-    instructions.extend(body);
-    instructions.push(Instruction::Ret);
-    Ok(vec![
-        Instruction::Lambda {
-            code: Rc::new(instructions),
-            arity,
-        },
-    ])
-}
-
-fn compile_body(
-    mut datums: VecDeque<Datum>,
-    tail: bool,
-) -> Result<Vec<Instruction>, CompilerError> {
-    let definitions = compile_definitions(&mut datums);
-
-    check![!datums.is_empty(), CompilerError::Illegal];
-
-    let sequence = compile_sequence(datums, tail)?;
-
-    let mut instructions = vec![];
-
-    for def in definitions {
-        instructions.extend(def);
-    }
-
-    instructions.extend(sequence);
-
-    Ok(instructions)
-}
-
-fn compile_sequence(
-    mut datums: VecDeque<Datum>,
-    tail: bool,
-) -> Result<Vec<Instruction>, CompilerError> {
-    if datums.is_empty() {
-        return Ok(vec![]);
-    }
-
-    let expression = compile_expression_inner(datums.pop_back().unwrap(), tail)?;
-
-    let commands: Vec<Vec<_>> = datums
-        .into_iter()
-        .map(|d| compile_expression_inner(d, false))
-        .collect::<Result<_, _>>()?;
-
-    let mut instructions = vec![];
-
-    for command in commands {
-        instructions.extend(command);
-        instructions.push(Instruction::Pop);
-    }
-
-    instructions.extend(expression);
-
-    Ok(instructions)
-}
-
-fn compile_definition(datum: Datum, tail: bool) -> Result<Vec<Instruction>, CompilerError> {
-    let mut list = datum.list().ok_or(CompilerError::Illegal)?;
-
-    check![!list.is_empty(), CompilerError::Illegal];
-
-    let symbol = keyword_name(list.pop_front().unwrap()).ok_or(CompilerError::Illegal)?;
-
-    match &symbol[..] {
-        // TODO: top-level begin wat
-        keywords::BEGIN if list.is_empty() => Ok(vec![Instruction::Nil]),
-        keywords::BEGIN => {
-            let mut instructions = vec![];
-            let last_exp = list.len() - 1;
-            for (i, d) in list.into_iter().enumerate() {
-                instructions.extend(compile_expression_inner(d, tail && i == last_exp)?);
-                instructions.push(Instruction::Pop);
-            }
-            instructions.pop();
-            Ok(instructions)
-        }
-
-        keywords::DEFINE if list.len() >= 2 => {
-            let formals = list.pop_front().map(parse_lambda_formals_exp).unwrap()?;
-            let instructions = match (formals.0.len(), formals, list.len()) {
-                (0, (_, Some(variable)), 1) => {
-                    let mut instructions =
-                        compile_expression_inner(list.pop_front().unwrap(), false)?;
-                    instructions.push(Instruction::DefineVar(variable.into()));
-                    instructions
-                }
-                (_, (mut args, None), _) => {
-                    check![!args.is_empty(), CompilerError::Illegal];
-
-                    let variable = args.remove(0);
-                    let mut instructions = compile_lambda_exp((args, None), list)?;
-                    instructions.push(Instruction::DefineVar(variable.into()));
-                    instructions
-                }
-                (_, (mut args, Some(rest)), _) => {
-                    check![args.len() == 1, CompilerError::Illegal];
-
-                    let variable = args.remove(0);
-                    let mut instructions = compile_lambda_exp((vec![], Some(rest)), list)?;
-                    instructions.push(Instruction::DefineVar(variable.into()));
-                    instructions
-                }
-            };
-            Ok(instructions)
-        }
-        _ => Err(CompilerError::Illegal),
-    }
-}
-
-fn parse_lambda_formals_exp(datum: Datum) -> Result<LambdaFormals, CompilerError> {
-    match (symbol_type(&datum), datum) {
-        (_, Datum::List(l)) => Ok((l.into_variables()?, None)),
-        (_, Datum::Pair { car, cdr }) => {
-            let vars = car.into_variables()?;
-            let rest = parse_variable(*cdr)?;
-            Ok((vars, Some(rest)))
-        }
-        (Symbol::Variable, Datum::Symbol(s)) => Ok((vec![], Some(s))),
-        _ => Err(CompilerError::Illegal),
-    }
-}
-
-fn compile_definitions(datums: &mut VecDeque<Datum>) -> Vec<Vec<Instruction>> {
-    let mut definitions = vec![];
-
-    loop {
-        let maybe_def = datums
-            .get(0)
-            .cloned()
-            .ok_or(CompilerError::Illegal)
-            .and_then(|d| compile_definition(d, false));
-
-        if let Ok(def) = maybe_def {
-            definitions.push(def);
-            datums.pop_front();
-        } else {
-            break;
-        }
-    }
-
-    definitions
-}
-
 fn parse_variable(datum: Datum) -> Result<String, CompilerError> {
     if let (Symbol::Variable, Datum::Symbol(s)) = (symbol_type(&datum), datum) {
         Ok(s)
     } else {
         Err(CompilerError::Illegal)
     }
-}
-
-fn compile_quasiquotation(datum: Datum) -> Result<Vec<Instruction>, CompilerError> {
-    compile_quasiquotation_at_level(datum, QuasiquoteState::default())
-        .map(|result| result.instructions)
-}
-
-#[derive(Default, Clone, Copy, Debug)]
-struct QuasiquoteState {
-    level: usize,
-    spreadable: bool,
-}
-
-impl QuasiquoteState {
-    fn nest(&self) -> QuasiquoteState {
-        let mut clone = *self;
-        clone.level += 1;
-        clone
-    }
-
-    fn unnest(&self) -> QuasiquoteState {
-        let mut clone = *self;
-        clone.level -= 1;
-        clone
-    }
-
-    fn spreadable(&self) -> QuasiquoteState {
-        let mut clone = *self;
-        clone.spreadable = true;
-        clone
-    }
-}
-
-#[derive(Debug)]
-struct QuasiquoteResult {
-    instructions: Vec<Instruction>,
-    splice: bool,
-}
-
-impl From<Vec<Instruction>> for QuasiquoteResult {
-    fn from(instructions: Vec<Instruction>) -> QuasiquoteResult {
-        QuasiquoteResult {
-            instructions,
-            splice: false,
-        }
-    }
-}
-
-// TO DO: does this method really take 1 datum? The grammar suggests so.
-fn compile_quasiquotation_at_level(
-    datum: Datum,
-    qq_state: QuasiquoteState,
-) -> Result<QuasiquoteResult, CompilerError> {
-    let mut splice = false;
-    let instructions = match datum {
-        Datum::Symbol(s) => vec![Instruction::Symbol(s.into())],
-        Datum::List(datums) => {
-            let compiled = datums
-                .into_iter()
-                .map(|d| compile_quasiquotation_at_level(d, qq_state.spreadable()));
-            let (mut instructions, lists) = unroll_qquoted_list_elements(compiled)?;
-            instructions.push(Instruction::DynList(lists, false));
-            instructions
-        }
-        Datum::Pair { car, cdr } => {
-            let compiled = car.into_iter()
-                .map(|d| compile_quasiquotation_at_level(d, qq_state.spreadable()));
-            let (mut instructions, lists) = unroll_qquoted_list_elements(compiled)?;
-            instructions.extend(compile_quasiquotation_at_level(*cdr, qq_state)?.instructions);
-            instructions.push(Instruction::DynList(lists, true));
-            instructions
-        }
-        Datum::Abbreviation {
-            kind: kind @ AbbreviationKind::Quote,
-            datum,
-        } => verbose_quotation(
-            compile_quasiquotation_at_level(*datum, qq_state)?.instructions,
-            kind,
-        ),
-        Datum::Abbreviation {
-            kind: kind @ AbbreviationKind::Quasiquote,
-            datum,
-        } => verbose_quotation(
-            compile_quasiquotation_at_level(*datum, qq_state.nest())?.instructions,
-            kind,
-        ),
-        Datum::Abbreviation {
-            kind: kind @ AbbreviationKind::Comma,
-            datum,
-        } => if qq_state.level == 0 {
-            // TODO: we could optimize this into tail position sometimes
-            compile_expression_inner(*datum, false)?
-        } else {
-            verbose_quotation(
-                compile_quasiquotation_at_level(*datum, qq_state.unnest())?.instructions,
-                kind,
-            )
-        },
-        Datum::Abbreviation {
-            kind: kind @ AbbreviationKind::CommaAt,
-            datum,
-        } => match qq_state {
-            QuasiquoteState {
-                level: 0,
-                spreadable: true,
-            } => {
-                splice = true;
-                compile_expression_inner(*datum, false)?
-            }
-            QuasiquoteState {
-                level: 0,
-                spreadable: false,
-            } => Err(CompilerError::Illegal)?,
-            _ => verbose_quotation(
-                compile_quasiquotation_at_level(*datum, qq_state.unnest())?.instructions,
-                kind,
-            ),
-        },
-        Datum::Vector(datums) => {
-            let compiled = datums
-                .into_iter()
-                .map(|d| compile_quasiquotation_at_level(d, qq_state.spreadable()));
-            let (mut instructions, lists) = unroll_qquoted_list_elements(compiled)?;
-            instructions.push(Instruction::DynVector(lists));
-            instructions
-        }
-        d => compile_expression_inner(d, false)?,
-    };
-
-    Ok(QuasiquoteResult {
-        instructions,
-        splice,
-    })
-}
-
-struct ReversedIterator<I: DoubleEndedIterator> {
-    original: I,
-}
-
-impl<I> Iterator for ReversedIterator<I>
-where
-    I: DoubleEndedIterator,
-{
-    type Item = I::Item;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.original.next_back()
-    }
-}
-
-trait Reverse
-where
-    Self: Sized + DoubleEndedIterator,
-{
-    fn reverse(self) -> ReversedIterator<Self>;
-}
-
-impl<I> Reverse for I
-where
-    I: DoubleEndedIterator,
-{
-    fn reverse(self) -> ReversedIterator<Self> {
-        ReversedIterator { original: self }
-    }
-}
-
-#[inline]
-fn verbose_quotation(
-    mut instructions: Vec<Instruction>,
-    kind: AbbreviationKind,
-) -> Vec<Instruction> {
-    let keyword: &str = kind.into();
-    instructions.insert(0, Instruction::Symbol(keyword.into()));
-    instructions.push(Instruction::List(2, false));
-    instructions
-}
-
-#[inline]
-fn unroll_qquoted_list_elements<I: Iterator<Item = Result<QuasiquoteResult, CompilerError>>>(
-    compiled: I,
-) -> Result<(Vec<Instruction>, usize), CompilerError> {
-    let mut instructions = vec![];
-    let mut accumulated_scalars = 0;
-    let mut lists = 0;
-    for result in compiled {
-        let result = result?;
-        if result.splice {
-            if accumulated_scalars > 0 {
-                lists += 1;
-                instructions.push(Instruction::Integer(accumulated_scalars as i32));
-                accumulated_scalars = 0;
-            }
-            lists += 1;
-            instructions.extend(result.instructions);
-            instructions.push(Instruction::Flatten);
-        } else {
-            accumulated_scalars += 1;
-            instructions.extend(result.instructions);
-        }
-    }
-    if accumulated_scalars > 0 {
-        lists += 1;
-        instructions.push(Instruction::Integer(accumulated_scalars as i32));
-    }
-    Ok((instructions, lists))
 }
 
 //

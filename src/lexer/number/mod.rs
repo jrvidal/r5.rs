@@ -1,5 +1,5 @@
-use super::TokenErrorClass;
 use super::chars::LexerIterator;
+use super::TokenErrorClass;
 use std::i32;
 use std::ops::Neg;
 use std::str::FromStr;

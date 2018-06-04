@@ -1,5 +1,5 @@
 use compiler::InstructionRef;
-use std::collections::{HashMap, hash_map::Entry};
+use std::collections::{hash_map::Entry, HashMap};
 use std::time::Instant;
 
 pub trait Profiler {
