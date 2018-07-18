@@ -4,6 +4,7 @@ extern crate env_logger;
 extern crate gc;
 #[macro_use]
 extern crate log;
+extern crate fallible_iterator;
 
 #[macro_use]
 mod helpers;
@@ -14,3 +15,6 @@ mod interpreter;
 pub mod lexer;
 pub mod reader;
 pub mod vm;
+
+pub mod lexer2;
+pub mod reader2;
