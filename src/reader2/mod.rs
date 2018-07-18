@@ -1,27 +1,24 @@
 //! Convert tokens into "datums"
-use fallible_iterator::{FallibleIterator, Peekable as FalliblePeekable};
-use std::iter::Peekable;
-use std::error::Error;
+use fallible_iterator::{FallibleIterator, Peekable};
 
 mod datum;
 
-use lexer2::Token;
-pub use self::datum::{AbbreviationKind, Datum, ReaderError};
 use self::datum::parse_datum;
+pub use self::datum::{AbbreviationKind, Datum, ReaderError};
+use lexer2::{Token, TokenizerError};
 
-struct Datums<T: FallibleIterator> {
-    tokens: FalliblePeekable<T>,
+pub struct Datums<T: FallibleIterator> {
+    tokens: Peekable<T>,
 }
 
 impl<T> FallibleIterator for Datums<T>
 where
-    T: FallibleIterator<Item = Token>,
-    T::Error: Error,
+    T: FallibleIterator<Item = Token, Error = TokenizerError>
 {
     type Item = Datum;
     type Error = ReaderError;
 
     fn next(&mut self) -> Result<Option<Datum>, ReaderError> {
-        unimplemented!()
+        parse_datum(&mut self.tokens)
     }
 }

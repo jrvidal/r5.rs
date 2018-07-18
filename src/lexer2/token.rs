@@ -1,6 +1,7 @@
-use fallible_iterator::FallibleIterator;
+use std::error::Error;
+use std::fmt;
 
-use super::chars::{Chars, LexerIterator};
+use super::chars::{LexerIterator};
 
 /**
     Tokenizer
@@ -38,13 +39,25 @@ pub enum Token {
     Dot,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TokenizerError {
     error: TokenErrorClass,
 }
 
+impl fmt::Display for TokenizerError {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.write_str(&format!("{:?}", self.error))
+    }
+}
+
+impl Error for TokenizerError {
+    fn description(&self) -> &str {
+        "Tokenizer error"
+    }
+}
+
 /// The possible errors while tokenizing the input
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenErrorClass {
     InvalidPound,
     InvalidCharName,
@@ -65,27 +78,6 @@ pub enum TokenErrorClass {
     EmptyNumber,
 }
 
-/// A stream of tokens
-pub struct Tokens<I: Iterator<Item = char>> {
-    source: Chars<I>,
-}
-
-impl<I: Iterator<Item = char>> FallibleIterator for Tokens<I> {
-    type Item = Token;
-    type Error = TokenizerError;
-
-    fn next(&mut self) -> Result<Option<Token>, TokenizerError> {
-        next_token(&mut self.source)
-    }
-}
-
-impl<I: Iterator<Item = char>> Tokens<I> {
-    pub fn new(source: I) -> Tokens<I> {
-        Tokens {
-            source: source.into(),
-        }
-    }
-}
 
 #[derive(PartialEq, Debug)]
 enum ParsingState {

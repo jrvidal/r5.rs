@@ -37,5 +37,4 @@ pub fn interpret(
     value.ok_or(InterpreterError::EOF)
 }
 
-#[cfg(test)]
 mod test;
