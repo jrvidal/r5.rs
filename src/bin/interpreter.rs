@@ -27,6 +27,8 @@ mod not_web {
     use rustyline;
     use rustyline::error::ReadlineError;
 
+    use fallible_iterator::FallibleIterator;
+
     pub fn main() {
         env_logger::init();
 
@@ -121,16 +123,11 @@ mod not_web {
         F: FnMut(Result<Value, ExecutionError>) -> bool,
         P: Profiler,
     {
-        let mut tokens = match Tokens::new(source.chars()).collect() {
-            Ok(tokens) => tokens,
-            Err(e) => {
-                println!("Invalid input: {:?}", e);
-                return;
-            }
-        };
+        let tokens = Tokens::new(source.chars());
+        let mut datums = Datums::new(tokens);
 
         loop {
-            let datum = match parse_datum(&mut tokens) {
+            let datum = match datums.next() {
                 Ok(Some(datum)) => datum,
                 Err(e) => {
                     println!("Invalid datum: {:?}", e);

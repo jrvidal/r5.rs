@@ -1,4 +1,7 @@
-use super::chars::{Chars, LexerIterator};
+use std::error::Error;
+use std::fmt;
+
+use super::chars::{LexerIterator};
 
 /**
     Tokenizer
@@ -36,13 +39,25 @@ pub enum Token {
     Dot,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TokenizerError {
     error: TokenErrorClass,
 }
 
+impl fmt::Display for TokenizerError {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.write_str(&format!("{:?}", self.error))
+    }
+}
+
+impl Error for TokenizerError {
+    fn description(&self) -> &str {
+        "Tokenizer error"
+    }
+}
+
 /// The possible errors while tokenizing the input
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenErrorClass {
     InvalidPound,
     InvalidCharName,
@@ -63,28 +78,6 @@ pub enum TokenErrorClass {
     EmptyNumber,
 }
 
-/// A stream of tokens
-pub struct Tokens<I: Iterator<Item = char>> {
-    it: Chars<I>,
-}
-
-impl<I: Iterator<Item = char>> Iterator for Tokens<I> {
-    type Item = Result<Token, TokenizerError>;
-
-    fn next(&mut self) -> Option<Result<Token, TokenizerError>> {
-        match next_token(&mut self.it) {
-            Ok(Some(t)) => Some(Ok(t)),
-            Ok(None) => None,
-            Err(err) => Some(Err(err)),
-        }
-    }
-}
-
-impl<I: Iterator<Item = char>> Tokens<I> {
-    pub fn new(it: I) -> Tokens<I> {
-        Tokens { it: it.into() }
-    }
-}
 
 #[derive(PartialEq, Debug)]
 enum ParsingState {

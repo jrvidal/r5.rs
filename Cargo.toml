@@ -8,6 +8,7 @@ edition = "2018"
 gc = "0.3.2"
 log = "0.4.1"
 env_logger = "0.5.10"
+fallible-iterator = "0.1"
 
 [target.'cfg(not(target_os = "emscripten"))'.dependencies]
 rustyline = "1.0.0"

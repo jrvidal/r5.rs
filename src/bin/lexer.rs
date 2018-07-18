@@ -1,11 +1,12 @@
-extern crate r5rs;
+use std::io::{stdin, stdout, Write};
+
+use fallible_iterator::FallibleIterator;
 
 use r5rs::lexer::*;
-use std::io::{stdin, stdout, Write};
 
 fn main() {
     let mut buffer = String::new();
-    let mut chars: Vec<_>;
+
     loop {
         buffer.clear();
 
@@ -20,9 +21,7 @@ fn main() {
             _ => panic!(""),
         }
 
-        chars = buffer.clone().chars().collect();
-
-        match Tokens::new(chars.into_iter()).collect::<Result<Vec<_>, _>>() {
+        match Tokens::new(buffer.chars()).collect::<Vec<_>>() {
             Ok(tokens) => println!("{:?}", tokens),
             Err(e) => println!("Invalid input: {:?}", e),
         }

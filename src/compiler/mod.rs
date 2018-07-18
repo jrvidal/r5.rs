@@ -7,8 +7,9 @@ use std::rc::Rc;
 
 use self::keywords::is_syntactic_keyword;
 use crate::helpers::*;
+
 use crate::lexer::Num;
-use crate::reader::{AbbreviationKind, Datum};
+use crate::reader::{Datum, AbbreviationKind};
 
 macro_rules! check {
     ($check:expr, $err:expr) => {

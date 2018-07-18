@@ -1,6 +1,7 @@
+use fallible_iterator::FallibleIterator;
 use crate::compiler::compile_expression;
 use crate::lexer::Tokens;
-use crate::reader::parse_datum;
+use crate::reader::Datums;
 use crate::vm::{exec, Environment, ExecutionError, GcShared, NoopProfiler, Value};
 
 #[derive(Debug, PartialEq)]
@@ -16,14 +17,14 @@ pub fn interpret(
     code: &str,
     environment: GcShared<Environment>,
 ) -> Result<Value, InterpreterError> {
-    let mut tokens = Tokens::new(code.chars())
-        .collect::<Result<_, _>>()
-        .map_err(|_| InterpreterError::Tokenizer)?;
+    let tokens = Tokens::new(code.chars());
+
+    let mut datums = Datums::new(tokens);
 
     let mut value = None;
 
     loop {
-        let datum = match parse_datum(&mut tokens) {
+        let datum = match datums.next() {
             Ok(Some(d)) => d,
             Ok(None) => break,
             _ => return Err(InterpreterError::Reader),
@@ -37,5 +38,4 @@ pub fn interpret(
     value.ok_or(InterpreterError::EOF)
 }
 
-#[cfg(test)]
 mod test;

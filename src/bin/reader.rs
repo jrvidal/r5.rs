@@ -1,12 +1,12 @@
-extern crate r5rs;
+use std::io::{stdin, stdout, Write};
+
+use fallible_iterator::FallibleIterator;
 
 use r5rs::lexer::*;
 use r5rs::reader::*;
-use std::io::{stdin, stdout, Write};
 
 fn main() {
     let mut buffer = String::new();
-    let mut chars: Vec<_>;
 
     loop {
         buffer.clear();
@@ -22,20 +22,19 @@ fn main() {
             _ => panic!(""),
         }
 
-        chars = buffer.clone().chars().collect();
+        let tokens = Tokens::new(buffer.chars());
+        let mut datums = Datums::new(tokens);
 
-        let mut tokens = match Tokens::new(chars.into_iter()).collect() {
-            Ok(tokens) => tokens,
-            Err(e) => {
-                println!("Invalid input: {:?}", e);
-                continue;
+
+        loop {
+            match datums.next() {
+                Ok(None) => break,
+                Err(e) => {
+                    eprintln!("Invalid input: {:?}", e);
+                    break;
+                },
+                Ok(Some(datum)) => println!("{:?}", datum)
             }
-        };
-
-        match parse_datum(&mut tokens) {
-            Ok(Some(datum)) => println!("{:?}", datum),
-            Err(e) => println!("Invalid datum: {:?}", e),
-            Ok(None) => {}
         }
     }
 }
