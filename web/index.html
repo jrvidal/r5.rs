@@ -48,8 +48,7 @@
       
     </div>
 
-    <script type='text/javascript'>
-      var Module = {
+<!--       var Module = {
         preRun: [],
         postRun: [],
         print: (function() {
@@ -102,7 +101,6 @@
           if (text) Module.printErr('[post-exception status] ' + text);
         };
       };
-
       let resolve, loaded = new Promise(res => { resolve = res });
       window.Scheme = {
         process(cb) {
@@ -110,12 +108,128 @@
           resolve();
         }
       };
+ -->   
+
+    <script type="text/javascript">
+(function() {
+    var wasm;
+    const __exports = {};
+
+
+    let cachedTextEncoder = new TextEncoder('utf-8');
+
+    let cachegetUint8Memory = null;
+    function getUint8Memory() {
+        if (cachegetUint8Memory === null || cachegetUint8Memory.buffer !== wasm.memory.buffer) {
+            cachegetUint8Memory = new Uint8Array(wasm.memory.buffer);
+        }
+        return cachegetUint8Memory;
+    }
+
+    function passStringToWasm(arg) {
+
+        const buf = cachedTextEncoder.encode(arg);
+        const ptr = wasm.__wbindgen_malloc(buf.length);
+        getUint8Memory().set(buf, ptr);
+        return [ptr, buf.length];
+    }
+
+    let cachedTextDecoder = new TextDecoder('utf-8');
+
+    function getStringFromWasm(ptr, len) {
+        return cachedTextDecoder.decode(getUint8Memory().subarray(ptr, ptr + len));
+    }
+
+    let cachedGlobalArgumentPtr = null;
+    function globalArgumentPtr() {
+        if (cachedGlobalArgumentPtr === null) {
+            cachedGlobalArgumentPtr = wasm.__wbindgen_global_argument_ptr();
+        }
+        return cachedGlobalArgumentPtr;
+    }
+
+    let cachegetUint32Memory = null;
+    function getUint32Memory() {
+        if (cachegetUint32Memory === null || cachegetUint32Memory.buffer !== wasm.memory.buffer) {
+            cachegetUint32Memory = new Uint32Array(wasm.memory.buffer);
+        }
+        return cachegetUint32Memory;
+    }
+
+    function freeEnvironment(ptr) {
+
+        wasm.__wbg_environment_free(ptr);
+    }
+    /**
+    */
+    class Environment {
+
+        free() {
+            const ptr = this.ptr;
+            this.ptr = 0;
+            freeEnvironment(ptr);
+        }
+
+        /**
+        * @returns {}
+        */
+        constructor() {
+            this.ptr = wasm.environment_new();
+        }
+        /**
+        * @param {string} arg0
+        * @returns {string}
+        */
+        process(arg0) {
+            const [ptr0, len0] = passStringToWasm(arg0);
+            const retptr = globalArgumentPtr();
+            wasm.environment_process(retptr, this.ptr, ptr0, len0);
+            const mem = getUint32Memory();
+            const rustptr = mem[retptr / 4];
+            const rustlen = mem[retptr / 4 + 1];
+            if (rustptr === 0) return;
+            const realRet = getStringFromWasm(rustptr, rustlen).slice();
+            wasm.__wbindgen_free(rustptr, rustlen * 1);
+            return realRet;
+
+        }
+    }
+    __exports.Environment = Environment;
+
+    __exports.__wbindgen_throw = function(ptr, len) {
+        throw new Error(getStringFromWasm(ptr, len));
+    };
+
+    function init(wasm_path) {
+        const fetchPromise = fetch(wasm_path);
+        let resultPromise;
+        if (false) {
+            resultPromise = WebAssembly.instantiateStreaming(fetchPromise, { './r5rs': __exports });
+        } else {
+            resultPromise = fetchPromise
+            .then(response => response.arrayBuffer())
+            .then(buffer => WebAssembly.instantiate(buffer, { './r5rs': __exports }));
+        }
+        return resultPromise.then(({instance}) => {
+            wasm = init.wasm = instance.exports;
+            return;
+        }).catch(e => console.error(e));
+    };
+    self.wasm_bindgen = Object.assign(init, __exports);
+})();
+
+    </script>
+    <script type='text/javascript'>
+
 
       window.addEventListener("load", onLoad);
 
       let output;
       let input;
       let container;
+      let environment;
+
+      wasm_bindgen("/target/r5rs_bg.wasm").then(onWasmReady);
 
       function onLoad() {
         output = document.getElementById("output");
@@ -127,7 +241,7 @@
         });
         output.textContent += '\n';
 
-        loaded.then(onWasmReady);
+        // loaded.then(onWasmReady);
       }
 
       function onWasmReady() {
@@ -135,6 +249,7 @@
         document.querySelector(".prompt").style.display = "";
         input.addEventListener("keypress", onKeypress);
         input.focus();
+        environment = new wasm_bindgen.Environment();
       }
 
       function onKeypress(e) {
@@ -146,10 +261,11 @@
         }
 
         output.textContent += `>${input.value}\n`;
-        output.textContent += Scheme.doProcess(input.value) + "\n";
+        const schemeOutput = environment.process(input.value);
+        output.textContent += schemeOutput + "\n";
         input.value = "";
       }
     </script>
-    <script async type="text/javascript" src="web.js"></script>
+    <!-- <script async type="text/javascript" src="web.js"></script> -->
   </body>
 </html>
