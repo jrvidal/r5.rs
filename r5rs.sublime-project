@@ -5,11 +5,15 @@
             "path": ".",
             "folder_exclude_patterns": [
                 "target",
+                "web",
                 "src"
             ]
         },
         {
             "path": "src"
+        },
+        {
+            "path": "web"
         }
     ],
     "SublimeLinter": {
