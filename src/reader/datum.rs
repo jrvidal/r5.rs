@@ -1,4 +1,4 @@
-use lexer::{NumberToken, Token};
+use crate::lexer::{NumberToken, Token};
 use std::collections::VecDeque;
 
 /// A "datum" is basically a balanced token tree
@@ -199,7 +199,7 @@ impl fmt::Display for Datum {
 mod test {
     use self::ReaderError::*;
     use super::*;
-    use lexer::Token;
+    use crate::lexer::Token;
     use std::collections::VecDeque;
     use std::iter::FromIterator;
 

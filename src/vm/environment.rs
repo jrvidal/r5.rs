@@ -3,7 +3,7 @@ use std::collections::hash_map;
 use std::fmt::{Debug, Error as FmtError, Formatter};
 
 use super::GcShared;
-use helpers::ImmutableString;
+use crate::helpers::ImmutableString;
 use std::collections::HashMap;
 
 pub struct Environment<V: Trace + 'static> {

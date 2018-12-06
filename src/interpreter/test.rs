@@ -1,5 +1,5 @@
 use super::{interpret, InterpreterError};
-use vm::{default_env, null_env, DeepEqual, ExecutionError, Value};
+use crate::vm::{default_env, null_env, DeepEqual, ExecutionError, Value};
 
 use self::ExecutionError::*;
 

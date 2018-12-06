@@ -1,7 +1,7 @@
-use compiler::compile_expression;
-use lexer::Tokens;
-use reader::parse_datum;
-use vm::{exec, Environment, ExecutionError, GcShared, NoopProfiler, Value};
+use crate::compiler::compile_expression;
+use crate::lexer::Tokens;
+use crate::reader::parse_datum;
+use crate::vm::{exec, Environment, ExecutionError, GcShared, NoopProfiler, Value};
 
 #[derive(Debug, PartialEq)]
 pub enum InterpreterError {

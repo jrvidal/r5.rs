@@ -1,4 +1,4 @@
-use compiler::InstructionRef;
+use crate::compiler::InstructionRef;
 use std::collections::{hash_map::Entry, HashMap};
 use std::time::Instant;
 

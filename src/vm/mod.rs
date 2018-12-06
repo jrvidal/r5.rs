@@ -6,7 +6,7 @@ use std::rc::Rc;
 use self::gc::shared;
 use self::stack::Stack;
 pub use self::value::{DeepEqual, NativeProcedure, Pair, Value};
-use compiler::Instruction;
+use crate::compiler::Instruction;
 
 pub use self::gc::GcShared;
 pub use self::profiler::*;

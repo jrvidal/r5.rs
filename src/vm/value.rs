@@ -2,7 +2,7 @@ use super::environment::Environment as GenericEnvironment;
 use super::gc::GcShared;
 use super::{Branch, ExecutionError, VmState};
 use gc::{Finalize, Trace};
-use helpers::ImmutableString;
+use crate::helpers::ImmutableString;
 
 pub type Environment = GenericEnvironment<Value>;
 

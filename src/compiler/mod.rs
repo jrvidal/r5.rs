@@ -6,9 +6,9 @@ use std::fmt::{self, Display};
 use std::rc::Rc;
 
 use self::keywords::is_syntactic_keyword;
-use helpers::*;
-use lexer::Num;
-use reader::{AbbreviationKind, Datum};
+use crate::helpers::*;
+use crate::lexer::Num;
+use crate::reader::{AbbreviationKind, Datum};
 
 macro_rules! check {
     ($check:expr, $err:expr) => {
