@@ -20,9 +20,27 @@ use super::chars::{LexerIterator};
 */
 use super::number::NumberToken;
 
+#[cfg(test)]
+#[path = "token_test.rs"]
+mod token_test;
+
 /// A Scheme token
+#[derive(Debug, PartialEq, Clone)]
+pub struct Token {
+    pub ty: TokenType,
+    span: (usize, usize)
+}
+
+impl Token {
+    pub fn fake(ty: TokenType) -> Token {
+        Token { ty, span: (0, 0) }
+    }
+}
+
+
+/// The type of a Scheme token
 #[derive(Clone, PartialEq, Debug)]
-pub enum Token {
+pub enum TokenType {
     Identifier(String),
     Boolean(bool),
     Number(NumberToken),
@@ -82,20 +100,50 @@ pub enum TokenErrorClass {
 #[derive(PartialEq, Debug)]
 enum ParsingState {
     Normal,
-    Identifier,
+    Identifier(usize),
     Comment,
-    Character(char),
-    String,
+    Character(char, usize),
+    String(usize),
 }
 
 const CHAR_NAME_SPACE: &[char] = &['s', 'p', 'a', 'c', 'e'];
 const CHAR_NAME_NEWLINE: &[char] = &['n', 'e', 'w', 'l', 'i', 'n', 'e'];
 
+macro_rules! tok_ret {
+    (internal; $value:expr; $lo:expr; $hi:expr) => ({
+        return Ok(Some(Token { ty: $value, span: ($lo, $hi)  }))
+    });
+    ($value:expr; advance $stream:ident; $amount:expr) => ({
+        let source_char = $stream.next().unwrap();
+        if $amount > 1 {
+            $stream.advance($amount - 1);
+        }
+        tok_ret!(internal; $value; source_char.pos; source_char.pos + $amount)
+    });
+
+    ($value:expr; $lo:expr => $hi:expr) => ({
+        tok_ret!(internal; $value; $lo; $hi)
+    });
+
+    ($value:expr, on $lo:expr) => ({
+        tok_ret!(internal; $value; $lo; $lo + 1)
+    });
+
+    // ($value:expr) => ({
+    //     return Ok(Some(Token { ty: $value, span: (0, 0) }))
+    // });
+    // ($value:expr, $stream:ident, $amount:expr) => ({
+    //     $stream.advance($amount);
+    //     return Ok(Some(Token { ty: $value, span: (0, 0) }))
+    // })
+}
 pub fn next_token<T: LexerIterator>(stream: &mut T) -> Result<Option<Token>, TokenizerError> {
     let mut state = ParsingState::Normal;
     let mut string_buf = String::new();
 
     loop {
+        let starting_pos = stream.pos();
+
         let peek3 = stream.peek(2);
         // Numbers are handled by peeking to delegate properly to parse_number
         if state == ParsingState::Normal {
@@ -104,12 +152,12 @@ pub fn next_token<T: LexerIterator>(stream: &mut T) -> Result<Option<Token>, Tok
 
                 // Pound
                 (Some('#'), Some('t')) if is_delimiter!(peek3) => {
-                    ret_val!(Token::Boolean(true), stream, 2)
+                    tok_ret!(TokenType::Boolean(true); advance stream; 2)
                 }
                 (Some('#'), Some('f')) if is_delimiter!(peek3) => {
-                    ret_val!(Token::Boolean(false), stream, 2)
+                    tok_ret!(TokenType::Boolean(false); advance stream; 2)
                 }
-                (Some('#'), Some('(')) => ret_val!(Token::OpenVector, stream, 2),
+                (Some('#'), Some('(')) => tok_ret!(TokenType::OpenVector; advance stream; 2),
                 (Some('#'), Some('\\')) => { /*char, delegate to main loop*/ }
 
                 (Some('#'), Some('e'))
@@ -122,7 +170,7 @@ pub fn next_token<T: LexerIterator>(stream: &mut T) -> Result<Option<Token>, Tok
                 | (Some('+'), Some('0'...'9'))
                 | (Some('-'), Some('0'...'9'))
                 | (Some('.'), Some('0'...'9')) => match NumberToken::parse(stream) {
-                    Ok(nt) => ret_val!(Token::Number(nt)),
+                    Ok(nt) => tok_ret!(TokenType::Number(nt); starting_pos => stream.pos()),
                     Err(error) => {
                         return Err(TokenizerError { error });
                     }
@@ -134,15 +182,17 @@ pub fn next_token<T: LexerIterator>(stream: &mut T) -> Result<Option<Token>, Tok
             }
         }
 
-        let c = match stream.next() {
+        let sch = match stream.next() {
             Some(d) => d,
 
             None => match state {
-                ParsingState::Character(_) => ret_err!(InvalidCharName),
-                ParsingState::String => ret_err!(UnclosedString),
+                ParsingState::Character(..) => ret_err!(InvalidCharName),
+                ParsingState::String(_) => ret_err!(UnclosedString),
                 _ => return Ok(None),
             },
         };
+
+        let c = sch.c;
 
         match state {
             ParsingState::Normal => {
@@ -152,18 +202,18 @@ pub fn next_token<T: LexerIterator>(stream: &mut T) -> Result<Option<Token>, Tok
 
                 let peek3 = stream.peek(2);
                 match c {
-                    '(' => ret_val!(Token::Open),
-                    ')' => ret_val!(Token::Close),
-                    '`' => ret_val!(Token::BackQuote),
-                    '\'' => ret_val!(Token::SingleQuote),
+                    '(' => tok_ret!(TokenType::Open, on sch.pos),
+                    ')' => tok_ret!(TokenType::Close, on sch.pos),
+                    '`' => tok_ret!(TokenType::BackQuote, on sch.pos),
+                    '\'' => tok_ret!(TokenType::SingleQuote, on sch.pos),
 
                     // Numbers are already handled
                     '.' => match (stream.peek(0), stream.peek(1)) {
                         (Some('.'), Some('.')) if is_delimiter!(peek3) => {
                             stream.advance(2);
-                            ret_val!(Token::Identifier("...".to_string()));
+                            tok_ret!(TokenType::Identifier("...".to_string()); sch.pos => sch.pos + 3);
                         }
-                        (x, _) if is_delimiter!(x) => ret_val!(Token::Dot),
+                        (x, _) if is_delimiter!(x) => tok_ret!(TokenType::Dot, on sch.pos),
                         _ => ret_err!(InvalidDot),
                     },
                     ';' => {
@@ -171,7 +221,7 @@ pub fn next_token<T: LexerIterator>(stream: &mut T) -> Result<Option<Token>, Tok
                     }
                     '"' => {
                         string_buf.clear();
-                        state = ParsingState::String;
+                        state = ParsingState::String(sch.pos);
                         stream.case_sensitive(true);
                     }
 
@@ -183,11 +233,11 @@ pub fn next_token<T: LexerIterator>(stream: &mut T) -> Result<Option<Token>, Tok
                         match next.map(|c| c.to_ascii_lowercase()) {
                             None => ret_err!(UnfinishedChar),
                             Some('s') | Some('n') if !is_delimiter!(peek) => {
-                                state = ParsingState::Character(next.unwrap());
+                                state = ParsingState::Character(next.unwrap(), sch.pos);
                             }
                             Some(_) if is_delimiter!(peek) => {
                                 stream.next();
-                                ret_val!(Token::Character(next.unwrap()))
+                                tok_ret!(TokenType::Character(next.unwrap()); sch.pos => sch.pos + 3)
                             }
                             _ => ret_err!(InvalidCharName),
                         }
@@ -195,24 +245,24 @@ pub fn next_token<T: LexerIterator>(stream: &mut T) -> Result<Option<Token>, Tok
 
                     // It's an identifier
                     '+' | '-' => if is_delimiter!(stream.peek(0)) {
-                        ret_val!(Token::Identifier(c.to_string()))
+                        tok_ret!(TokenType::Identifier(c.to_string()), on sch.pos)
                     } else {
                         ret_err!(UnexpectedCharacter)
                     },
                     ',' => match stream.peek(0) {
                         Some('@') => {
                             stream.next();
-                            ret_val!(Token::CommaAt)
+                            tok_ret!(TokenType::CommaAt; sch.pos => sch.pos + 2)
                         }
-                        _ => ret_val!(Token::Comma),
+                        _ => tok_ret!(TokenType::Comma, on sch.pos),
                     },
                     d if is_initial(d) => match stream.peek(0) {
                         Some(e) if is_subsequent(e) => {
                             string_buf.clear();
                             string_buf.push(d);
-                            state = ParsingState::Identifier;
+                            state = ParsingState::Identifier(sch.pos);
                         }
-                        _ => ret_val!(Token::Identifier(d.to_string())),
+                        _ => tok_ret!(TokenType::Identifier(d.to_string()), on sch.pos),
                     },
                     _ => ret_err!(UnexpectedCharacter),
                 }
@@ -223,7 +273,7 @@ pub fn next_token<T: LexerIterator>(stream: &mut T) -> Result<Option<Token>, Tok
                 }
                 continue;
             }
-            ParsingState::Character(d) => {
+            ParsingState::Character(d, character_starting_pos) => {
                 let char_name = if d == 's' {
                     CHAR_NAME_SPACE
                 } else {
@@ -237,11 +287,12 @@ pub fn next_token<T: LexerIterator>(stream: &mut T) -> Result<Option<Token>, Tok
                     let c = stream.peek(i);
                     if i == l && is_delimiter!(c) {
                         stream.advance(l);
-                        ret_val!(Token::Character(if char_name == CHAR_NAME_SPACE {
+                        let character = if char_name == CHAR_NAME_SPACE {
                             ' '
                         } else {
                             '\n'
-                        }));
+                        };
+                        tok_ret!(TokenType::Character(character); character_starting_pos => character_starting_pos + char_name.len() + 2);
                     } else if i != l && c == Some(char_name[i + 1]) {
                         i += 1;
                         continue;
@@ -250,9 +301,9 @@ pub fn next_token<T: LexerIterator>(stream: &mut T) -> Result<Option<Token>, Tok
                     }
                 }
             }
-            ParsingState::String => match c {
-                '"' => ret_val!(Token::String(string_buf.clone())),
-                '\\' => match stream.next() {
+            ParsingState::String(string_starting_pos) => match c {
+                '"' => tok_ret!(TokenType::String(string_buf.clone()); string_starting_pos => sch.pos + 1),
+                '\\' => match stream.next().map(|sch| sch.c) {
                     Some('"') => {
                         string_buf.push('"');
                     }
@@ -261,12 +312,12 @@ pub fn next_token<T: LexerIterator>(stream: &mut T) -> Result<Option<Token>, Tok
                 },
                 _ => string_buf.push(c),
             },
-            ParsingState::Identifier => {
+            ParsingState::Identifier(identifier_starting_pos) => {
                 string_buf.push(c);
 
                 match stream.peek(0) {
                     Some(d) if is_subsequent(d) => {}
-                    _ => ret_val!(Token::Identifier(string_buf.clone())),
+                    _ => tok_ret!(TokenType::Identifier(string_buf.clone()); identifier_starting_pos => sch.pos + 1),
                 }
             }
         }

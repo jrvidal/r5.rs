@@ -9,6 +9,7 @@ where
     it: I,
     case_sensitive: bool,
     buf: VecDeque<I::Item>,
+    pos: usize,
 }
 
 impl<I: Iterator<Item = char>> Chars<I> {
@@ -35,25 +36,37 @@ impl Chars<vec::IntoIter<char>> {
 }
 
 impl<I: Iterator<Item = char>> Iterator for Chars<I> {
-    type Item = char;
+    type Item = SourceChar;
 
-    fn next(&mut self) -> Option<char> {
+    fn next(&mut self) -> Option<SourceChar> {
         self.fill_buf();
-        self.buf.pop_front().map(|c| {
-            if self.case_sensitive {
-                c
-            } else {
-                c.to_ascii_lowercase()
-            }
+        let c = match self.buf.pop_front() {
+            Some(c) => c,
+            None => return None
+        };
+
+        let pos = self.pos;
+        self.pos += c.len_utf8();
+
+        Some(SourceChar {
+            c: if self.case_sensitive { c } else { c.to_ascii_lowercase() },
+            pos,
         })
     }
 }
 
-pub trait LexerIterator: Iterator<Item = char> {
+#[derive(Debug, Clone, Copy)]
+pub struct SourceChar {
+    pub c: char,
+    pub pos: usize,
+}
+
+pub trait LexerIterator: Iterator<Item = SourceChar> {
     fn case_sensitive(&mut self, sensitive: bool);
     fn is_case_sensitive(&self) -> bool;
     // index is supposed to be <= 10
     fn peek(&mut self, index: usize) -> Option<char>;
+    fn pos(&self) -> usize;
     fn advance(&mut self, n: usize) {
         for _ in 0..n {
             let _ = self.next();
@@ -78,6 +91,10 @@ impl<I: Iterator<Item = char>> LexerIterator for Chars<I> {
         self.case_sensitive
     }
 
+    fn pos(&self) -> usize {
+        self.pos
+    }
+
     fn peek(&mut self, index: usize) -> Option<char> {
         self.fill_buf();
         self.buf.get(index).cloned().map(|c| {
@@ -96,6 +113,7 @@ impl<T: IntoIterator<Item = char>> From<T> for Chars<T::IntoIter> {
             it: into_iter.into_iter(),
             buf: VecDeque::new(),
             case_sensitive: false,
+            pos: 0,
         }
     }
 }

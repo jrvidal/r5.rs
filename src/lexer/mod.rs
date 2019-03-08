@@ -8,12 +8,9 @@ mod chars;
 mod number;
 mod token;
 
-#[cfg(test)]
-mod token_test;
-
 pub use self::number::{Num, NumberToken};
 use self::token::{TokenErrorClass, next_token};
-pub use self::token::{TokenizerError, Token};
+pub use self::token::{TokenizerError, Token, TokenType};
 use self::chars::Chars;
 
 /// A stream of tokens

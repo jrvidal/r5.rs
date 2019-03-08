@@ -18,13 +18,13 @@ pub struct NumberToken {
 impl NumberToken {
     /// stream is guaranteed to be non-empty
     pub fn parse<T: LexerIterator>(stream: &mut T) -> Result<NumberToken, TokenErrorClass> {
-        parse_prefix(stream)
-            .and_then(|(e, r)| parse_complex(stream, r).map(|n| (e, r, n)))
-            .map(|(e, r, n)| NumberToken {
-                exactness: e,
-                radix: r,
-                number: n,
-            })
+        let (ex, rdx) = parse_prefix(stream)?;
+        let n = parse_complex(stream, rdx)?;
+        Ok(NumberToken {
+            exactness: ex,
+            radix: rdx,
+            number: n,
+        })
     }
 }
 
@@ -669,7 +669,7 @@ fn parse_real<T: LexerIterator>(
 // It does not err if last char is not a delimiter
 // It is always called with a valid marker in the stream
 fn parse_suffix<T: LexerIterator>(stream: &mut T) -> Result<DecSuffix, String> {
-    let marker = ExpMarker::from(stream.next().unwrap());
+    let marker = ExpMarker::from(stream.next().unwrap().c);
     let mut sign = None;
     let mut digits = String::new();
 

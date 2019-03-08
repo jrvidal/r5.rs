@@ -2,7 +2,7 @@ use std::fmt;
 use std::collections::VecDeque;
 use fallible_iterator::{FallibleIterator, Peekable};
 
-use crate::lexer::{NumberToken, Token, TokenizerError};
+use crate::lexer::{NumberToken, Token, TokenType, TokenizerError};
 
 /// A "datum" is basically a balanced token tree
 #[derive(Debug, Clone, PartialEq)]
@@ -62,23 +62,23 @@ where
         Ok(Some(token)) => token,
     };
 
-    match token {
-        Token::Boolean(b) => ok_some!(Datum::Boolean(b)),
-        Token::Number(n) => ok_some!(Datum::Number(n)),
-        Token::Character(c) => ok_some!(Datum::Character(c)),
-        Token::String(s) => ok_some!(Datum::String(s)),
-        Token::Identifier(x) => ok_some!(Datum::Symbol(x)),
+    match token.ty {
+        TokenType::Boolean(b) => ok_some!(Datum::Boolean(b)),
+        TokenType::Number(n) => ok_some!(Datum::Number(n)),
+        TokenType::Character(c) => ok_some!(Datum::Character(c)),
+        TokenType::String(s) => ok_some!(Datum::String(s)),
+        TokenType::Identifier(x) => ok_some!(Datum::Symbol(x)),
 
-        Token::Open => parse_list_datum(stream),
-        Token::Comma | Token::CommaAt | Token::SingleQuote | Token::BackQuote => {
+        TokenType::Open => parse_list_datum(stream),
+        TokenType::Comma | TokenType::CommaAt | TokenType::SingleQuote | TokenType::BackQuote => {
             // TO DO
             // This could be handled by a common type:
             // *iff* those tokens are not used for anything else
-            let abbr = match token {
-                Token::Comma => AbbreviationKind::Comma,
-                Token::CommaAt => AbbreviationKind::CommaAt,
-                Token::SingleQuote => AbbreviationKind::Quote,
-                Token::BackQuote => AbbreviationKind::Quasiquote,
+            let abbr = match token.ty {
+                TokenType::Comma => AbbreviationKind::Comma,
+                TokenType::CommaAt => AbbreviationKind::CommaAt,
+                TokenType::SingleQuote => AbbreviationKind::Quote,
+                TokenType::BackQuote => AbbreviationKind::Quasiquote,
                 _ => unreachable!(),
             };
 
@@ -88,11 +88,11 @@ where
                 kind: abbr,
             }))
         }
-        Token::OpenVector => {
+        TokenType::OpenVector => {
             let mut datums = VecDeque::new();
 
             loop {
-                if take_peek![stream].ok_or(ReaderError::UnexpectedEOF)? == &Token::Close {
+                if take_peek![stream].ok_or(ReaderError::UnexpectedEOF)?.ty == TokenType::Close {
                     let _ = stream.next();
                     break;
                 }
@@ -117,25 +117,25 @@ where
     let mut is_pair = false;
 
     loop {
-        match *take_peek![stream].ok_or(ReaderError::UnexpectedEOF)? {
-            Token::Close if !is_pair && last.is_none() => {
+        match (*take_peek![stream].ok_or(ReaderError::UnexpectedEOF)?).ty {
+            TokenType::Close if !is_pair && last.is_none() => {
                 let _ = stream.next();
                 ret_val!(Datum::List(datums));
             }
-            Token::Close if is_pair && !datums.is_empty() && last.is_some() => {
+            TokenType::Close if is_pair && !datums.is_empty() && last.is_some() => {
                 let _ = stream.next();
                 ret_val!(Datum::Pair {
                     car: datums,
                     cdr: last.unwrap(),
                 });
             }
-            Token::Dot if !is_pair => {
+            TokenType::Dot if !is_pair => {
                 is_pair = true;
                 let _ = stream.next();
             }
             // Close and Dot are errors in any other circumstances
             // Also interrupted stream or any other token after finishing a pair
-            Token::Close | Token::Dot => return Err(ReaderError::UnexpectedListToken),
+            TokenType::Close | TokenType::Dot => return Err(ReaderError::UnexpectedListToken),
             _ if last.is_some() && is_pair => return Err(ReaderError::UnexpectedListToken),
             _ => {}
         }
@@ -256,23 +256,23 @@ mod test {
         }};
     }
 
-    pub fn tokens(t: &[Token]) -> VecDeque<Token> {
+    pub fn tokens(types: &[TokenType]) -> VecDeque<Token> {
         let mut stream = VecDeque::new();
-        for token in t.iter().cloned() {
-            stream.push_back(token);
+        for ty in types.iter().cloned() {
+            stream.push_back(Token::fake(ty));
         }
         stream
     }
 
     #[test]
     fn boolean_datum_test() {
-        let mut stream = tokens(&[Token::Boolean(false)]);
+        let mut stream = tokens(&[TokenType::Boolean(false)]);
         assert_eq!(parse!(stream), ok_some!(Datum::Boolean(false)));
     }
 
     #[test]
     fn list_test() {
-        let mut stream = tokens(&[Token::Open, Token::Character('a'), Token::Close]);
+        let mut stream = tokens(&[TokenType::Open, TokenType::Character('a'), TokenType::Close]);
         let expected = Datum::List(vec_deque![Datum::Character('a')]);
         assert_eq!(parse!(stream), ok_some!(expected));
     }
@@ -281,11 +281,11 @@ mod test {
     fn list_pair_test() {
         let s = "b".to_string();
         let stream = tokens(&[
-            Token::Open,
-            Token::Character('a'),
-            Token::Dot,
-            Token::String(s.clone()),
-            Token::Close,
+            TokenType::Open,
+            TokenType::Character('a'),
+            TokenType::Dot,
+            TokenType::String(s.clone()),
+            TokenType::Close,
         ]);
         let expected = Datum::Pair {
             car: vec_deque![Datum::Character('a')],
@@ -296,38 +296,38 @@ mod test {
 
     #[test]
     fn incomplete_list_test() {
-        let stream = tokens(&[Token::Open, Token::Identifier("foo".to_string())]);
+        let stream = tokens(&[TokenType::Open, TokenType::Identifier("foo".to_string())]);
         assert_eq!(parse!(stream), Err(UnexpectedEOF));
     }
 
     #[test]
     fn empty_head_list_test() {
-        let stream = tokens(&[Token::Open, Token::Dot, Token::Character('a'), Token::Close]);
+        let stream = tokens(&[TokenType::Open, TokenType::Dot, TokenType::Character('a'), TokenType::Close]);
         assert_eq!(parse!(stream), Err(UnexpectedListToken));
     }
 
     #[test]
     fn empty_tail_list_test() {
-        let stream = tokens(&[Token::Open, Token::Character('a'), Token::Dot, Token::Close]);
+        let stream = tokens(&[TokenType::Open, TokenType::Character('a'), TokenType::Dot, TokenType::Close]);
         assert_eq!(parse!(stream), Err(UnexpectedEOF));
     }
 
     #[test]
     fn double_tail_list_test() {
         let stream = tokens(&[
-            Token::Open,
-            Token::Character('a'),
-            Token::Dot,
-            Token::Boolean(true),
-            Token::String("foo".to_string()),
-            Token::Close,
+            TokenType::Open,
+            TokenType::Character('a'),
+            TokenType::Dot,
+            TokenType::Boolean(true),
+            TokenType::String("foo".to_string()),
+            TokenType::Close,
         ]);
         assert!(parse!(stream).is_err());
     }
 
     #[test]
     fn vector_test() {
-        let stream = tokens(&[Token::OpenVector, Token::Boolean(true), Token::Close]);
+        let stream = tokens(&[TokenType::OpenVector, TokenType::Boolean(true), TokenType::Close]);
 
         assert_eq!(
             parse!(stream),
@@ -338,11 +338,11 @@ mod test {
     #[test]
     fn abbreviation_test() {
         let stream = tokens(&[
-            Token::BackQuote,
-            Token::Open,
-            Token::Identifier("foo".to_string()),
-            Token::Identifier("bar".to_string()),
-            Token::Close,
+            TokenType::BackQuote,
+            TokenType::Open,
+            TokenType::Identifier("foo".to_string()),
+            TokenType::Identifier("bar".to_string()),
+            TokenType::Close,
         ]);
         let expected = Datum::Abbreviation {
             kind: AbbreviationKind::Quasiquote,
@@ -356,7 +356,7 @@ mod test {
 
     #[test]
     fn incomplete_abbreviation_test() {
-        let stream = tokens(&[Token::SingleQuote, Token::Open]);
+        let stream = tokens(&[TokenType::SingleQuote, TokenType::Open]);
         assert_eq!(parse!(stream), Err(UnexpectedEOF));
     }
 
