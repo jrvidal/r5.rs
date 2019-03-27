@@ -9,7 +9,7 @@ use self::keywords::is_syntactic_keyword;
 use crate::helpers::*;
 
 use crate::lexer::Num;
-use crate::reader::{Datum, AbbreviationKind};
+use crate::reader::{Datum, AbbreviationKind, DatumKind};
 
 macro_rules! check {
     ($check:expr, $err:expr) => {
@@ -196,23 +196,23 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Co
     }
 
     // Simple cases
-    let mut datums = match (symbol_type(&d), d) {
-        (Symbol::Variable, Datum::Symbol(s)) => return simple_datum!(LoadVar, s.into()),
+    let mut datums = match (symbol_type(&d), d.tree) {
+        (Symbol::Variable, DatumKind::Symbol(s)) => return simple_datum!(LoadVar, s.into()),
         // TO DO: why doesn't this work??
-        // Datum::Symbol(s) if keywords::is_syntactic_keyword(&s) => {
+        // DatumKind::Symbol(s) if keywords::is_syntactic_keyword(&s) => {
         //         ret_val!(Expression::Variable(s))
         // },
-        (_, Datum::Boolean(b)) => return simple_datum![Boolean, b],
-        (_, Datum::Character(c)) => return simple_datum![Character, c],
-        (_, Datum::String(s)) => return simple_datum![String, s.into()],
-        (_, Datum::Number(nt)) => match nt.into() {
+        (_, DatumKind::Boolean(b)) => return simple_datum![Boolean, b],
+        (_, DatumKind::Character(c)) => return simple_datum![Character, c],
+        (_, DatumKind::String(s)) => return simple_datum![String, s.into()],
+        (_, DatumKind::Number(nt)) => match nt.into() {
             Ok(Num::Integer(n)) => return simple_datum![Integer, n],
             Ok(Num::Float(f)) => return simple_datum![Float, f],
             Err(_) => return Ok(vec![Instruction::InvalidNumber]),
         },
         (
             _,
-            Datum::Abbreviation {
+            DatumKind::Abbreviation {
                 kind: AbbreviationKind::Quote,
                 datum,
             },
@@ -220,7 +220,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Co
 
         (
             _,
-            Datum::Abbreviation {
+            DatumKind::Abbreviation {
                 kind: AbbreviationKind::Quasiquote,
                 datum,
             },
@@ -228,10 +228,10 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Co
 
         // Nope
         // http://stackoverflow.com/questions/18641757/unquoted-vectors-in-r5rs-scheme
-        // (_, Datum::Vector(datums)) => {}
+        // (_, DatumKind::Vector(datums)) => {}
 
         // Delegate
-        (_, Datum::List(datums)) => datums,
+        (_, DatumKind::List(datums)) => datums,
         _ => return Err(CompilerError::Illegal),
     };
 
@@ -283,8 +283,8 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Co
             let d = datums.pop_front().unwrap();
             let var = symbol_type(&d);
             let parsed = compile_expression_inner(datums.pop_front().unwrap(), false);
-            match (d, var, parsed) {
-                (Datum::Symbol(s), Symbol::Variable, Ok(mut instructions)) => {
+            match (d.tree, var, parsed) {
+                (DatumKind::Symbol(s), Symbol::Variable, Ok(mut instructions)) => {
                     instructions.push(Instruction::SetVar(s.into()));
                     Ok(instructions)
                 }
@@ -305,7 +305,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Co
             let mut total_len = else_expressions.as_ref().map(|e| e.len()).unwrap_or(1);
 
             for datum in datums {
-                let mut datums = if let Datum::List(datums) = datum {
+                let mut datums = if let DatumKind::List(datums) = datum.tree {
                     datums
                 } else {
                     return Err(CompilerError::Illegal);
@@ -313,8 +313,8 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Co
 
                 check![!datums.is_empty(), CompilerError::Illegal];
 
-                let arrow = match datums.get(1) {
-                    Some(&Datum::Symbol(ref s)) if s == keywords::ARROW => true,
+                let arrow = match datums.get(1).map(|d| &d.tree) {
+                    Some(&DatumKind::Symbol(ref s)) if s == keywords::ARROW => true,
                     _ => false,
                 };
 
@@ -421,7 +421,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Co
             let mut clauses = vec![];
 
             for datum in datums {
-                let mut datums = if let Datum::List(l) = datum {
+                let mut datums = if let DatumKind::List(l) = datum.tree {
                     l
                 } else {
                     return Err(CompilerError::Illegal);
@@ -430,7 +430,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Co
                 check![datums.len() >= 2, CompilerError::Illegal];
 
                 let cases: Vec<Vec<Instruction>> =
-                    if let Datum::List(l) = datums.pop_front().unwrap() {
+                    if let DatumKind::List(l) = datums.pop_front().unwrap().tree {
                         l.into_iter()
                             .map(quotations::compile_quotation)
                             .collect::<Result<_, _>>()?
@@ -516,7 +516,7 @@ fn compile_expression_inner(d: Datum, tail: bool) -> Result<Vec<Instruction>, Co
                     check![parts.len() == 2 || parts.len() == 3, CompilerError::Illegal];
                     let var = parts.pop_front().unwrap();
 
-                    if let (Symbol::Variable, Datum::Symbol(s)) = (symbol_type(&var), var) {
+                    if let (Symbol::Variable, DatumKind::Symbol(s)) = (symbol_type(&var), var.tree) {
                         vars.push(s);
                     } else {
                         return Err(CompilerError::Illegal);
@@ -725,7 +725,7 @@ fn compile_else_clause(
     tail: bool,
 ) -> Result<Option<(Vec<Instruction>)>, CompilerError> {
     let mut else_clause = match datums.back().cloned() {
-        Some(Datum::List(l)) => if l.is_empty() {
+        Some(Datum { tree: DatumKind::List(l), ..}) => if l.is_empty() {
             return Ok(None);
         } else {
             l
@@ -781,6 +781,17 @@ fn compile_let_exp(
         })
         .collect::<Result<_, _>>()?;
 
+    compile_let_exp_inner(variable, bindings_list, datums, let_type, tail)
+}
+
+fn compile_let_exp_inner(
+    variable: Option<String>,
+    bindings_list: VecDeque<(String, Vec<Instruction>)>,
+    datums: VecDeque<Datum>,
+    let_type: LetExp,
+    tail: bool,
+) -> Result<Vec<Instruction>, CompilerError> {
+
     let n_of_bindings = bindings_list.len();
     let mut instructions = vec![];
     match let_type {
@@ -831,7 +842,8 @@ fn compile_let_exp(
             }
 
             let variable = variable.unwrap();
-            datums = named_let_body(variable, bindings, datums);
+            return compile_named_let_body(variable, bindings, datums, instructions, tail);
+            // datums = named_let_body(variable, bindings, datums);
         }
     }
 
@@ -849,42 +861,72 @@ fn compile_let_exp(
     Ok(instructions)
 }
 
-// (let fn ((x 'xinit) ...) <body>) is equivalent to:
-// (let ((x 'xinit) ...) (letrec ((fn (lambda (x ...) <body>))) (fn x ...)))
-fn named_let_body(
+fn compile_named_let_body(
     variable: String,
     bindings: VecDeque<String>,
-    body: VecDeque<Datum>,
-) -> VecDeque<Datum> {
-    let call = {
-        let mut vec = VecDeque::new();
-        vec.push_back(Datum::Symbol(variable.clone()));
-        vec.extend(bindings.clone().into_iter().map(Datum::Symbol));
-        Datum::List(vec)
-    };
-    let lambda = {
-        let mut vec = VecDeque::new();
-        vec.push_back(Datum::Symbol(keywords::LAMBDA.to_owned()));
-        vec.push_back(Datum::List(
-            bindings.into_iter().map(Datum::Symbol).collect(),
-        ));
-        vec.extend(body);
-        Datum::List(vec)
-    };
+    datums: VecDeque<Datum>,
+    mut instructions: Vec<Instruction>,
+    tail: bool
+) -> Result<Vec<Instruction>, CompilerError> {
+    instructions.push(Instruction::NewEnv);
+    instructions.push(Instruction::Nil);
+    instructions.push(Instruction::DefineVar(variable.clone().into()));
 
-    let let_bindings = {
-        let mut vec = VecDeque::new();
-        vec.push_back(Datum::Symbol(variable));
-        vec.push_back(lambda);
-        Datum::List(vec![Datum::List(vec)].into_iter().collect())
-    };
+    // procedure
+    let formals = (bindings.clone().into_iter().collect(), None);
+    let body_instructions = body::compile_lambda_exp(formals, datums)?;
+    instructions.extend(body_instructions);
 
-    let mut vec = VecDeque::new();
-    vec.push_back(Datum::Symbol(keywords::LETREC.to_owned()));
-    vec.push_back(let_bindings);
-    vec.push_back(call);
-    vec![Datum::List(vec)].into_iter().collect()
+    instructions.push(Instruction::DefineVar(variable.clone().into()));
+
+    // body: (fn x ...)
+    instructions.extend(bindings.iter().map(|b| Instruction::LoadVar(b.clone().into())));
+    instructions.push(Instruction::LoadVar(variable.clone().into()));
+    instructions.push(Instruction::Call(tail, bindings.len()));
+
+    instructions.push(Instruction::PopEnv);
+
+
+    instructions.push(Instruction::PopEnv);
+    Ok(instructions)
 }
+
+// (let fn ((x 'xinit) ...) <body>) is equivalent to:
+// (let ((x 'xinit) ...) (letrec ((fn (lambda (x ...) <body>))) (fn x ...)))
+// fn named_let_body(
+//     variable: String,
+//     bindings: VecDeque<String>,
+//     body: VecDeque<Datum>,
+// ) -> VecDeque<Datum> {
+//     let call = {
+//         let mut vec = VecDeque::new();
+//         vec.push_back(DatumKind::Symbol(variable.clone()));
+//         vec.extend(bindings.clone().into_iter().map(DatumKind::Symbol));
+//         DatumKind::List(vec)
+//     };
+//     let lambda = {
+//         let mut vec = VecDeque::new();
+//         vec.push_back(DatumKind::Symbol(keywords::LAMBDA.to_owned()));
+//         vec.push_back(DatumKind::List(
+//             bindings.into_iter().map(DatumKind::Symbol).collect(),
+//         ));
+//         vec.extend(body);
+//         DatumKind::List(vec)
+//     };
+
+//     let let_bindings = {
+//         let mut vec = VecDeque::new();
+//         vec.push_back(DatumKind::Symbol(variable));
+//         vec.push_back(lambda);
+//         DatumKind::List(vec![DatumKind::List(vec)].into_iter().collect())
+//     };
+
+//     let mut vec = VecDeque::new();
+//     vec.push_back(DatumKind::Symbol(keywords::LETREC.to_owned()));
+//     vec.push_back(let_bindings);
+//     vec.push_back(call);
+//     vec![DatumKind::List(vec)].into_iter().collect()
+// }
 
 // Order of expressions: arg_1, ..., arg_n, operator
 // Order in stack: operator, arg_n, ..., arg_1
@@ -902,7 +944,7 @@ fn compile_call_exp(
 }
 
 fn parse_variable(datum: Datum) -> Result<String, CompilerError> {
-    if let (Symbol::Variable, Datum::Symbol(s)) = (symbol_type(&datum), datum) {
+    if let (Symbol::Variable, DatumKind::Symbol(s)) = (symbol_type(&datum), datum.tree) {
         Ok(s)
     } else {
         Err(CompilerError::Illegal)
@@ -920,8 +962,8 @@ enum Symbol {
 }
 
 fn symbol_type(d: &Datum) -> Symbol {
-    match *d {
-        Datum::Symbol(ref s) => if is_syntactic_keyword(&s[..]) {
+    match d.tree {
+        DatumKind::Symbol(ref s) => if is_syntactic_keyword(&s[..]) {
             Symbol::Keyword
         } else {
             Symbol::Variable
@@ -931,8 +973,8 @@ fn symbol_type(d: &Datum) -> Symbol {
 }
 
 fn keyword_name(d: Datum) -> Option<String> {
-    match (symbol_type(&d), d) {
-        (Symbol::Keyword, Datum::Symbol(s)) => Some(s),
+    match (symbol_type(&d), d.tree) {
+        (Symbol::Keyword, DatumKind::Symbol(s)) => Some(s),
         _ => None,
     }
 }
@@ -959,8 +1001,8 @@ impl CompilerHelper for VecDeque<Datum> {
 
     fn into_variables(self) -> Result<Vec<String>, CompilerError> {
         self.into_iter()
-            .map(|d| match (symbol_type(&d), d) {
-                (Symbol::Variable, Datum::Symbol(s)) => Ok(s),
+            .map(|d| match (symbol_type(&d), d.tree) {
+                (Symbol::Variable, DatumKind::Symbol(s)) => Ok(s),
                 _ => Err(CompilerError::Illegal),
             })
             .collect()

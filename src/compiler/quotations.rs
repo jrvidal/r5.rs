@@ -1,9 +1,9 @@
-use super::{compile_expression_inner, AbbreviationKind, CompilerError, Datum, Instruction};
+use super::{compile_expression_inner, AbbreviationKind, CompilerError, Datum, DatumKind, Instruction};
 
 pub(super) fn compile_quotation(d: Datum) -> Result<Vec<Instruction>, CompilerError> {
-    let instructions = match d {
-        Datum::Symbol(s) => vec![Instruction::Symbol(s.into())],
-        Datum::List(datums) => {
+    let instructions = match d.tree {
+        DatumKind::Symbol(s) => vec![Instruction::Symbol(s.into())],
+        DatumKind::List(datums) => {
             let mut instructions = vec![];
             let n = datums.len();
             for d in datums {
@@ -12,7 +12,7 @@ pub(super) fn compile_quotation(d: Datum) -> Result<Vec<Instruction>, CompilerEr
             instructions.push(Instruction::List(n, false));
             instructions
         }
-        Datum::Pair { car, cdr } => {
+        DatumKind::Pair { car, cdr } => {
             let mut instructions = vec![];
             let n = car.len() - 1;
             for d in car {
@@ -22,14 +22,14 @@ pub(super) fn compile_quotation(d: Datum) -> Result<Vec<Instruction>, CompilerEr
             instructions.push(Instruction::List(n, true));
             instructions
         }
-        Datum::Abbreviation { kind, datum } => {
+        DatumKind::Abbreviation { kind, datum } => {
             let mut instructions = compile_quotation(*datum)?;
             let keyword: &str = kind.into();
             instructions.insert(0, Instruction::Symbol(keyword.into()));
             instructions.push(Instruction::List(2, false));
             instructions
         }
-        Datum::Vector(datums) => {
+        DatumKind::Vector(datums) => {
             let mut instructions = vec![];
             let n = datums.len();
 
@@ -42,7 +42,7 @@ pub(super) fn compile_quotation(d: Datum) -> Result<Vec<Instruction>, CompilerEr
             instructions.push(Instruction::Vector(n));
             return Ok(instructions);
         }
-        d => compile_expression_inner(d, false)?,
+        _ => compile_expression_inner(d, false)?,
     };
 
     Ok(instructions)
@@ -100,9 +100,9 @@ fn compile_quasiquotation_at_level(
     qq_state: QuasiquoteState,
 ) -> Result<QuasiquoteResult, CompilerError> {
     let mut splice = false;
-    let instructions = match datum {
-        Datum::Symbol(s) => vec![Instruction::Symbol(s.into())],
-        Datum::List(datums) => {
+    let instructions = match datum.tree {
+        DatumKind::Symbol(s) => vec![Instruction::Symbol(s.into())],
+        DatumKind::List(datums) => {
             let compiled = datums
                 .into_iter()
                 .map(|d| compile_quasiquotation_at_level(d, qq_state.spreadable()));
@@ -110,7 +110,7 @@ fn compile_quasiquotation_at_level(
             instructions.push(Instruction::DynList(lists, false));
             instructions
         }
-        Datum::Pair { car, cdr } => {
+        DatumKind::Pair { car, cdr } => {
             let compiled = car.into_iter()
                 .map(|d| compile_quasiquotation_at_level(d, qq_state.spreadable()));
             let (mut instructions, lists) = unroll_qquoted_list_elements(compiled)?;
@@ -118,21 +118,21 @@ fn compile_quasiquotation_at_level(
             instructions.push(Instruction::DynList(lists, true));
             instructions
         }
-        Datum::Abbreviation {
+        DatumKind::Abbreviation {
             kind: kind @ AbbreviationKind::Quote,
             datum,
         } => verbose_quotation(
             compile_quasiquotation_at_level(*datum, qq_state)?.instructions,
             kind,
         ),
-        Datum::Abbreviation {
+        DatumKind::Abbreviation {
             kind: kind @ AbbreviationKind::Quasiquote,
             datum,
         } => verbose_quotation(
             compile_quasiquotation_at_level(*datum, qq_state.nest())?.instructions,
             kind,
         ),
-        Datum::Abbreviation {
+        DatumKind::Abbreviation {
             kind: kind @ AbbreviationKind::Comma,
             datum,
         } => if qq_state.level == 0 {
@@ -144,7 +144,7 @@ fn compile_quasiquotation_at_level(
                 kind,
             )
         },
-        Datum::Abbreviation {
+        DatumKind::Abbreviation {
             kind: kind @ AbbreviationKind::CommaAt,
             datum,
         } => match qq_state {
@@ -164,7 +164,7 @@ fn compile_quasiquotation_at_level(
                 kind,
             ),
         },
-        Datum::Vector(datums) => {
+        DatumKind::Vector(datums) => {
             let compiled = datums
                 .into_iter()
                 .map(|d| compile_quasiquotation_at_level(d, qq_state.spreadable()));
@@ -172,7 +172,7 @@ fn compile_quasiquotation_at_level(
             instructions.push(Instruction::DynVector(lists));
             instructions
         }
-        d => compile_expression_inner(d, false)?,
+        _ => compile_expression_inner(datum, false)?,
     };
 
     Ok(QuasiquoteResult {

@@ -4,7 +4,7 @@ use fallible_iterator::{FallibleIterator, Peekable};
 mod datum;
 
 use self::datum::parse_datum;
-pub use self::datum::{AbbreviationKind, Datum, ReaderError};
+pub use self::datum::{AbbreviationKind, Datum as DatumKind, DatumTree as Datum, ReaderError};
 use crate::lexer::{Token, TokenizerError};
 
 pub struct Datums<T: FallibleIterator> {

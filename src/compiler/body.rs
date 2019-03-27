@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 type LambdaFormals = (Vec<String>, Option<String>);
 
-use super::{compile_expression_inner, keywords, CompilerError, CompilerHelper, Datum, Instruction};
+use super::{compile_expression_inner, keywords, CompilerError, CompilerHelper, Datum, DatumKind, Instruction};
 
 // Order of formals: DefineVar(arg_n), ... DefineVar(arg_1)
 pub(super) fn compile_lambda_exp(
@@ -156,14 +156,14 @@ fn compile_definition(datum: Datum, tail: bool) -> Result<Vec<Instruction>, Comp
 
 pub(super) fn parse_lambda_formals_exp(datum: Datum) -> Result<LambdaFormals, CompilerError> {
     use super::Symbol;
-    match (super::symbol_type(&datum), datum) {
-        (_, Datum::List(l)) => Ok((l.into_variables()?, None)),
-        (_, Datum::Pair { car, cdr }) => {
+    match (super::symbol_type(&datum), datum.tree) {
+        (_, DatumKind::List(l)) => Ok((l.into_variables()?, None)),
+        (_, DatumKind::Pair { car, cdr }) => {
             let vars = car.into_variables()?;
             let rest = super::parse_variable(*cdr)?;
             Ok((vars, Some(rest)))
         }
-        (Symbol::Variable, Datum::Symbol(s)) => Ok((vec![], Some(s))),
+        (Symbol::Variable, DatumKind::Symbol(s)) => Ok((vec![], Some(s))),
         _ => Err(CompilerError::Illegal),
     }
 }
